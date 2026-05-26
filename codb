@@ -1,0 +1,12 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12,<3.13"
+# dependencies = ["typer>=0.16.0"]
+# ///
+"""Collab SQLC CLI launcher."""
+
+from cli.main import main
+
+
+if __name__ == "__main__":
+    main()

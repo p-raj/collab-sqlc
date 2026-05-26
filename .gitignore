@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build output
+dist/
+build/
+*.egg-info/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+frontend/.env
+
+# Docker data
+docker/pgdata/
+docker/redisdata/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test and tool caches
+coverage/
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+backend/.coverage
+
+# The public repo intentionally tracks the root ./codb launcher and cli/ source.

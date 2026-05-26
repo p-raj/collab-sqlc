@@ -1,0 +1,12 @@
+"""Shared domain base types used across all domains."""
+
+import uuid
+from datetime import UTC, datetime
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def new_id() -> str:
+    return str(uuid.uuid4())

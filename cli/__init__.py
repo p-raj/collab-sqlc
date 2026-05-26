@@ -1,0 +1,1 @@
+"""Collab SQLC CLI package."""
