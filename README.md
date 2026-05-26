@@ -141,7 +141,7 @@ All settings are via environment variables. See [`.env.example`](.env.example) f
 | `DB_URL` | App database (PostgreSQL) | `postgresql+asyncpg://postgres:postgres@localhost:5432/collabsql` |
 | `REDIS_URL` | Redis (caching + rate limiting) | `redis://localhost:6379/0` |
 | `APP_DEBUG` | Debug mode + API docs at `/api/docs` | `false` |
-| `APP_CORS_ORIGINS` | Allowed CORS origins | `http://localhost` |
+| `APP_CORS_ORIGINS` | Allowed CORS origins as a JSON list | `["http://localhost:5173","http://localhost:3000"]` |
 
 ### Auth & SSO
 
