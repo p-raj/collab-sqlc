@@ -5,6 +5,22 @@
 Collab SQLC gives your team a shared workspace for writing, running, and organizing SQL queries against PostgreSQL and ClickHouse. Everything runs on your infrastructure.
 
 ---
+## Screenshots
+
+| Modern Editor  | Schema Exploration |
+| ------------- | ------------- |
+| <img width="400" alt="Screenshot 2026-06-08 at 3 12 02 PM" src="https://github.com/user-attachments/assets/5cd5d54e-1a08-49fc-8e99-aa2fd6143ee5" /> |  <img width="400" alt="Screenshot 2026-06-08 at 3 14 15 PM" src="https://github.com/user-attachments/assets/05316e96-e94a-40c0-9b8f-28cb557c904d" />|
+
+ | Audit Logs  | Query As API |
+| ------------- | ------------- |
+| <img width="400" alt="Screenshot 2026-06-08 at 3 16 46 PM" src="https://github.com/user-attachments/assets/95695cab-21cc-481c-b99d-c18cc6eb567b" /> |  <img width="400"  alt="Screenshot 2026-06-08 at 3 21 39 PM" src="https://github.com/user-attachments/assets/dbaca9fb-4979-41fa-bd37-4caf349e7110" />|
+
+ | Explainer  | RBAC |
+| ------------- | ------------- |
+| <img width="400" alt="Screenshot 2026-06-08 at 3 32 32 PM" src="https://github.com/user-attachments/assets/2e968c8e-feb1-44df-88ab-0d6a10eddcec" /> | <img width="400" alt="Screenshot 2026-06-08 at 3 31 32 PM" src="https://github.com/user-attachments/assets/0fc1a1e8-3403-4761-a1e1-114aedf86c52" /> |
+
+
+---
 
 ## Features
 
