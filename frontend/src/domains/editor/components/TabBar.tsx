@@ -6,7 +6,7 @@ interface TabBarProps {
   tabs: Tab[];
   activeTabId: string;
   onSelect: (tabId: string) => void;
-  onClose: (tabId: string) => void;
+  onClose: (tabId: string) => void | Promise<void>;
   onAdd: () => void;
 }
 
@@ -14,12 +14,7 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onAdd }: TabBarPr
   const handleClose = useCallback(
     (tab: Tab, e: React.MouseEvent | React.KeyboardEvent) => {
       e.stopPropagation();
-      const isDirty = tab.sql !== tab.savedSql;
-      if (isDirty) {
-        const ok = window.confirm(`"${tab.title}" has unsaved changes. Close anyway?`);
-        if (!ok) return;
-      }
-      onClose(tab.id);
+      void onClose(tab.id);
     },
     [onClose],
   );

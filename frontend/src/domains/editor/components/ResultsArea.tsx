@@ -21,7 +21,7 @@ import {
 type ResultsTab = "sql" | "data" | "export" | "tree" | "plan" | "grid" | "stats" | "raw";
 
 export function ResultsArea() {
-  const { state, activeTab } = useEditorContext();
+  const { activeTab } = useEditorContext();
   const { resolvedTheme } = useTheme();
   const [activeResultsTab, setActiveResultsTab] = useState<ResultsTab>("data");
   const [searchQuery, setSearchQuery] = useState("");
@@ -34,6 +34,7 @@ export function ResultsArea() {
   const hasResult = result !== null;
   const hasError = error !== null;
   const hasExplain = explainPlan !== null;
+  const isExecuting = activeTab?.isExecuting ?? false;
 
   const filteredResult = useMemo(() => {
     if (!result || !searchQuery.trim()) return result;
@@ -125,22 +126,20 @@ export function ResultsArea() {
       <div className="flex h-8 flex-shrink-0 items-center border-b px-3">
         {/* Status badge */}
         <div className="flex items-center gap-1.5 pr-4">
-          {state.isExecuting && (
-            <Loader2 size={12} className="animate-spin text-muted-foreground" />
-          )}
-          {!state.isExecuting && hasResult && (
+          {isExecuting && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
+          {!isExecuting && hasResult && (
             <>
               <CheckCircle2 size={12} className="text-foreground" />
               <span className="text-xs font-medium text-foreground">Success</span>
             </>
           )}
-          {!state.isExecuting && hasExplain && !hasResult && !hasError && (
+          {!isExecuting && hasExplain && !hasResult && !hasError && (
             <>
               <ListTree size={12} className="text-foreground" />
               <span className="text-xs font-medium text-foreground">Plan</span>
             </>
           )}
-          {!state.isExecuting && hasError && !hasResult && (
+          {!isExecuting && hasError && !hasResult && (
             <>
               <XCircle size={12} className="text-destructive" />
               <span className="text-xs font-medium text-destructive">Error</span>
@@ -197,13 +196,13 @@ export function ResultsArea() {
 
       {/* Content area */}
       <div className="flex-1 overflow-hidden">
-        {state.isExecuting && (
+        {isExecuting && (
           <div className="flex h-full items-center justify-center">
             <Loader2 size={20} className="animate-spin text-muted-foreground" />
           </div>
         )}
 
-        {!state.isExecuting && hasError && !hasResult && (
+        {!isExecuting && hasError && !hasResult && (
           <div className="p-3">
             <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
@@ -211,7 +210,7 @@ export function ResultsArea() {
           </div>
         )}
 
-        {!state.isExecuting && !hasResult && !hasError && !hasExplain && (
+        {!isExecuting && !hasResult && !hasError && !hasExplain && (
           <div className="flex h-full flex-col items-center justify-center gap-3">
             <p className="text-sm text-muted-foreground">Run a query to see results (⌘+Enter)</p>
             <div className="flex flex-col gap-1.5 text-[11px] text-muted-foreground/60">
@@ -253,7 +252,7 @@ export function ResultsArea() {
           </div>
         )}
 
-        {!state.isExecuting &&
+        {!isExecuting &&
           hasExplain &&
           !parsedPlan &&
           planParseError &&
@@ -265,23 +264,23 @@ export function ResultsArea() {
             </div>
           )}
 
-        {!state.isExecuting && hasExplain && parsedPlan && activeResultsTab === "tree" && (
+        {!isExecuting && hasExplain && parsedPlan && activeResultsTab === "tree" && (
           <PlanTree plan={parsedPlan} />
         )}
 
-        {!state.isExecuting && hasExplain && parsedPlan && activeResultsTab === "plan" && (
+        {!isExecuting && hasExplain && parsedPlan && activeResultsTab === "plan" && (
           <PlanDiagram plan={parsedPlan} />
         )}
 
-        {!state.isExecuting && hasExplain && parsedPlan && activeResultsTab === "grid" && (
+        {!isExecuting && hasExplain && parsedPlan && activeResultsTab === "grid" && (
           <PlanGrid plan={parsedPlan} />
         )}
 
-        {!state.isExecuting && hasExplain && parsedPlan && activeResultsTab === "stats" && (
+        {!isExecuting && hasExplain && parsedPlan && activeResultsTab === "stats" && (
           <PlanStats plan={parsedPlan} />
         )}
 
-        {!state.isExecuting && hasExplain && activeResultsTab === "raw" && (
+        {!isExecuting && hasExplain && activeResultsTab === "raw" && (
           <div className="h-full">
             <MonacoEditor
               language={explainOutputKind === "json" ? "json" : "plaintext"}
@@ -307,7 +306,7 @@ export function ResultsArea() {
           </div>
         )}
 
-        {!state.isExecuting && activeResultsTab === "sql" && (hasResult || hasExplain) && (
+        {!isExecuting && activeResultsTab === "sql" && (hasResult || hasExplain) && (
           <div className="h-full">
             <MonacoEditor
               language="sql"
@@ -333,7 +332,7 @@ export function ResultsArea() {
           </div>
         )}
 
-        {!state.isExecuting && hasResult && result && (
+        {!isExecuting && hasResult && result && (
           <>
             {activeResultsTab === "data" && (
               <div className="flex h-full flex-col">

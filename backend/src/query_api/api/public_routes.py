@@ -52,15 +52,11 @@ async def execute_api_query(
             params=params,
         )
         await session.commit()
+        content = response.model_dump(mode="json")
+        content["execution_id"] = execution_id
         return JSONResponse(
             status_code=200,
-            content={
-                "columns": response.columns,
-                "rows": response.rows,
-                "row_count": response.row_count,
-                "execution_time_ms": response.execution_time_ms,
-                "execution_id": execution_id,
-            },
+            content=content,
         )
     except NotFoundError:
         await session.commit()  # Commit execution log

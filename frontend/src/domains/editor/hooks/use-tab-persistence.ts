@@ -59,6 +59,10 @@ function fromPersistedTab(p: PersistedTab): Tab {
     result: null,
     error: null,
     errorPosition: null,
+    isExecuting: false,
+    runningQueryId: null,
+    backendPid: null,
+    runningDbType: null,
     schemaView,
     variables: p.variables ?? {},
     writeMode: p.writeMode ?? false,
@@ -80,7 +84,7 @@ export function loadPersistedState(): EditorState | null {
     const activeTabId = tabs.some((t) => t.id === data.activeTabId)
       ? data.activeTabId
       : tabs[0]!.id;
-    return { tabs, activeTabId, isExecuting: false };
+    return { tabs, activeTabId };
   } catch {
     return null;
   }
@@ -116,5 +120,5 @@ export function getInitialEditorState(): EditorState {
     return persisted;
   }
   const tab = createTab();
-  return { tabs: [tab], activeTabId: tab.id, isExecuting: false };
+  return { tabs: [tab], activeTabId: tab.id };
 }

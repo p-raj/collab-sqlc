@@ -1,5 +1,8 @@
+import json
 from collections.abc import AsyncGenerator
+from typing import Any
 
+from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -13,11 +16,16 @@ _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
+def json_serializer(value: Any) -> str:
+    return json.dumps(to_jsonable_python(value))
+
+
 def init_engine(settings: AppSettings) -> AsyncEngine:
     global _engine, _session_factory
 
     _engine = create_async_engine(
         settings.db.url,
+        json_serializer=json_serializer,
         pool_size=settings.db.pool_size,
         max_overflow=settings.db.max_overflow,
         pool_timeout=settings.db.pool_timeout,

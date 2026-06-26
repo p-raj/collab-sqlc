@@ -31,6 +31,10 @@ export function createTab(connectionId: string | null = null): Tab {
     result: null,
     error: null,
     errorPosition: null,
+    isExecuting: false,
+    runningQueryId: null,
+    backendPid: null,
+    runningDbType: null,
     schemaView: null,
     variables: {},
     writeMode: false,
@@ -55,6 +59,10 @@ export function createSchemaTab(schemaName: string, tableName: string, connectio
     result: null,
     error: null,
     errorPosition: null,
+    isExecuting: false,
+    runningQueryId: null,
+    backendPid: null,
+    runningDbType: null,
     schemaView: { schemaName, tableName, activeSection: "schema" },
     variables: {},
     writeMode: false,
@@ -72,6 +80,10 @@ function updateTab(state: EditorState, tabId: string, updates: Partial<Tab>): Ed
   };
 }
 
+function isCurrentExecution(tab: Tab | undefined, queryId: string | undefined): boolean {
+  return !queryId || tab?.runningQueryId === queryId;
+}
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case "ADD_TAB":
@@ -86,7 +98,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const remaining = state.tabs.filter((t) => t.id !== action.tabId);
       if (remaining.length === 0) {
         const newTab = createTab(closedTab?.connectionId ?? null);
-        return { ...state, tabs: [newTab], activeTabId: newTab.id, isExecuting: false };
+        return { ...state, tabs: [newTab], activeTabId: newTab.id };
       }
       const needsNewActive = state.activeTabId === action.tabId;
       return {
@@ -108,48 +120,73 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case "RENAME_TAB":
       return updateTab(state, action.tabId, { title: action.title });
 
-    case "SET_EXECUTING":
-      return { ...state, isExecuting: action.executing };
+    case "START_EXECUTION":
+      return updateTab(state, action.tabId, {
+        isExecuting: true,
+        runningQueryId: action.queryId,
+        backendPid: null,
+        runningDbType: action.dbType,
+        error: null,
+        errorPosition: null,
+      });
 
-    case "SET_RESULT":
-      return {
-        ...updateTab(state, action.tabId, {
-          result: action.result,
-          error: null,
-          errorPosition: null,
-          executedSql: action.sql,
-          explainPlan: null,
-          explainQuery: null,
-          explainDbType: null,
-        }),
-        isExecuting: false,
-      };
+    case "SET_BACKEND_PID": {
+      const tab = state.tabs.find((t) => t.id === action.tabId);
+      if (!isCurrentExecution(tab, action.queryId)) return state;
+      return updateTab(state, action.tabId, { backendPid: action.pid });
+    }
 
-    case "SET_ERROR":
-      return {
-        ...updateTab(state, action.tabId, {
-          error: action.error,
-          errorPosition: action.position ?? null,
-          result: null,
-          explainPlan: null,
-          explainQuery: null,
-          explainDbType: null,
-        }),
+    case "SET_RESULT": {
+      const tab = state.tabs.find((t) => t.id === action.tabId);
+      if (!isCurrentExecution(tab, action.queryId)) return state;
+      return updateTab(state, action.tabId, {
+        result: action.result,
+        error: null,
+        errorPosition: null,
         isExecuting: false,
-      };
+        runningQueryId: null,
+        backendPid: null,
+        runningDbType: null,
+        executedSql: action.sql,
+        explainPlan: null,
+        explainQuery: null,
+        explainDbType: null,
+      });
+    }
 
-    case "SET_EXPLAIN_RESULT":
-      return {
-        ...updateTab(state, action.tabId, {
-          explainPlan: action.plan,
-          explainQuery: action.query,
-          explainDbType: action.dbType,
-          result: null,
-          error: null,
-          errorPosition: null,
-        }),
+    case "SET_ERROR": {
+      const tab = state.tabs.find((t) => t.id === action.tabId);
+      if (!isCurrentExecution(tab, action.queryId)) return state;
+      return updateTab(state, action.tabId, {
+        error: action.error,
+        errorPosition: action.position ?? null,
         isExecuting: false,
-      };
+        runningQueryId: null,
+        backendPid: null,
+        runningDbType: null,
+        result: null,
+        explainPlan: null,
+        explainQuery: null,
+        explainDbType: null,
+      });
+    }
+
+    case "SET_EXPLAIN_RESULT": {
+      const tab = state.tabs.find((t) => t.id === action.tabId);
+      if (!isCurrentExecution(tab, action.queryId)) return state;
+      return updateTab(state, action.tabId, {
+        explainPlan: action.plan,
+        explainQuery: action.query,
+        explainDbType: action.dbType,
+        isExecuting: false,
+        runningQueryId: null,
+        backendPid: null,
+        runningDbType: null,
+        result: null,
+        error: null,
+        errorPosition: null,
+      });
+    }
 
     case "SET_VARIABLE": {
       const tab = state.tabs.find((t) => t.id === action.tabId);

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import secrets
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+from pydantic_core import to_jsonable_python
 from sqlalchemy import or_, select
 
 from src.connections.domain.models import ConnectionModel
@@ -53,6 +54,14 @@ def _verify_api_key(plaintext: str, key_hash: str) -> bool:
         return _ph.verify(key_hash, plaintext)
     except VerifyMismatchError:
         return False
+
+
+def _jsonable_rows(rows: list[list[Any]]) -> list[list[Any]]:
+    return cast("list[list[Any]]", to_jsonable_python(rows))
+
+
+def _jsonable_dict(data: dict[str, Any] | None) -> dict[str, Any] | None:
+    return cast("dict[str, Any] | None", to_jsonable_python(data))
 
 
 class QueryAPIService:
@@ -373,7 +382,7 @@ class QueryAPIService:
             raise ValidationError("Query execution failed. Check execution ID in logs.") from None
 
         # Apply row limit
-        rows = result.rows
+        rows = _jsonable_rows(result.rows)
         if query.api_row_limit and len(rows) > query.api_row_limit:
             rows = rows[: query.api_row_limit]
 
@@ -436,7 +445,7 @@ class QueryAPIService:
             max_rows=query.api_row_limit,
         )
 
-        rows = result.rows
+        rows = _jsonable_rows(result.rows)
         if query.api_row_limit and len(rows) > query.api_row_limit:
             rows = rows[: query.api_row_limit]
 
@@ -772,8 +781,8 @@ class QueryAPIService:
         # Create data log entry
         data_log = APIExecutionData(
             id=new_id(),
-            params_sent=params_sent,
-            response_data=response_data,
+            params_sent=_jsonable_dict(params_sent),
+            response_data=_jsonable_dict(response_data),
             error=error,
         )
         session.add(data_log)

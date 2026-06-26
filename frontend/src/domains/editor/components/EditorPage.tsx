@@ -29,7 +29,6 @@ const EMPTY_TABLES: TableInfo[] = [];
 
 export default function EditorPage() {
   const {
-    state,
     dispatch,
     activeTab,
     handleExecute,
@@ -37,8 +36,6 @@ export default function EditorPage() {
     handleCancel,
     handleFormatSql,
     handleReplayQuery,
-    backendPid,
-    runningConnectionDbType,
   } = useEditorContext();
   const { folders, handleSaveQuery, handleSaveQueryAs, handleMoveToFolder } =
     useEditorSavedQueryActions();
@@ -115,8 +112,9 @@ export default function EditorPage() {
   );
   const selectedConnection =
     connections.find((connection) => connection.id === selectedConnectionId) ?? null;
-  const queryHeaderConnectionDbType = state.isExecuting
-    ? (runningConnectionDbType ?? selectedConnection?.db_type ?? null)
+  const activeTabIsExecuting = activeTab?.isExecuting ?? false;
+  const queryHeaderConnectionDbType = activeTabIsExecuting
+    ? (activeTab?.runningDbType ?? selectedConnection?.db_type ?? null)
     : (selectedConnection?.db_type ?? null);
   useEffect(() => {
     if (selectedConnectionId) {
@@ -208,9 +206,9 @@ export default function EditorPage() {
 
       {/* Row 2: [Name] [...] ─── [Run] [Format] [Save] */}
       <QueryHeader
-        isExecuting={state.isExecuting}
+        isExecuting={activeTabIsExecuting}
         hasSelection={hasSelection}
-        backendPid={backendPid}
+        backendPid={activeTab?.backendPid ?? null}
         showSavePopover={showSavePopover}
         onShowSavePopover={setShowSavePopover}
         onRun={handleRunClick}
@@ -269,6 +267,7 @@ export default function EditorPage() {
                 onSelectionChange={setHasSelection}
                 errorPosition={activeTab.errorPosition}
                 errorMessage={activeTab.error}
+                modelPath={`codb://tabs/${activeTab.id}.sql`}
               />
             )}
           </div>

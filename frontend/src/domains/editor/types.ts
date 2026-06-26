@@ -26,6 +26,14 @@ export interface Tab {
   error: string | null;
   /** 1-based character offset into `sql` where the DB error occurred. */
   errorPosition: number | null;
+  /** True while this tab owns an in-flight query or EXPLAIN request. */
+  isExecuting: boolean;
+  /** Backend query id for the in-flight request owned by this tab. */
+  runningQueryId: string | null;
+  /** PostgreSQL backend PID for the in-flight request, when available. */
+  backendPid: number | null;
+  /** Database type captured when the in-flight request started. */
+  runningDbType: DatabaseType | null;
   schemaView: SchemaViewData | null;
   variables: Record<string, string>;
   /** When true, allows INSERT/UPDATE/DELETE/DDL queries. Defaults to false (read-only). */
@@ -60,15 +68,34 @@ export type EditorAction =
   | { type: "UPDATE_SQL"; tabId: string; sql: string }
   | { type: "SET_CONNECTION"; tabId: string; connectionId: string }
   | { type: "RENAME_TAB"; tabId: string; title: string }
-  | { type: "SET_EXECUTING"; executing: boolean }
-  | { type: "SET_RESULT"; tabId: string; result: QueryResult | null; sql: string }
-  | { type: "SET_ERROR"; tabId: string; error: string | null; position?: number | null }
+  | {
+      type: "START_EXECUTION";
+      tabId: string;
+      queryId: string;
+      dbType: DatabaseType | null;
+    }
+  | { type: "SET_BACKEND_PID"; tabId: string; queryId: string; pid: number }
+  | {
+      type: "SET_RESULT";
+      tabId: string;
+      result: QueryResult | null;
+      sql: string;
+      queryId?: string;
+    }
+  | {
+      type: "SET_ERROR";
+      tabId: string;
+      error: string | null;
+      position?: number | null;
+      queryId?: string;
+    }
   | {
       type: "SET_EXPLAIN_RESULT";
       tabId: string;
       plan: string;
       query: string;
       dbType: DatabaseType | null;
+      queryId?: string;
     }
   | { type: "SET_VARIABLE"; tabId: string; name: string; value: string }
   | { type: "MARK_SAVED"; tabId: string }
@@ -82,5 +109,4 @@ export type EditorAction =
 export interface EditorState {
   tabs: Tab[];
   activeTabId: string;
-  isExecuting: boolean;
 }

@@ -31,6 +31,8 @@ interface SqlEditorProps {
   errorPosition?: number | null;
   /** Error message to display in the marker tooltip. */
   errorMessage?: string | null;
+  /** Stable Monaco model path. Different paths keep undo history isolated. */
+  modelPath: string;
 }
 
 /**
@@ -64,9 +66,9 @@ function getRunnableSqlFromEditor(ed: editor.ICodeEditor): string | undefined {
     model.getOffsetAt(position),
     selection && !selection.isEmpty()
       ? {
-        startOffset: model.getOffsetAt(selection.getStartPosition()),
-        endOffset: model.getOffsetAt(selection.getEndPosition()),
-      }
+          startOffset: model.getOffsetAt(selection.getStartPosition()),
+          endOffset: model.getOffsetAt(selection.getEndPosition()),
+        }
       : null,
   );
 }
@@ -85,6 +87,7 @@ export function SqlEditor({
   onSelectionChange,
   errorPosition,
   errorMessage,
+  modelPath,
 }: SqlEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import("monaco-editor") | null>(null);
@@ -243,7 +246,7 @@ export function SqlEditor({
     } else {
       monaco.editor.setModelMarkers(model, "codb-query-error", []);
     }
-  }, [errorPosition, errorMessage, value]);
+  }, [errorPosition, errorMessage, modelPath, value]);
 
   // Cleanup providers on unmount
   useEffect(() => {
@@ -257,6 +260,7 @@ export function SqlEditor({
     <MonacoEditor
       language="sql"
       value={value}
+      path={modelPath}
       onChange={(v) => onChange(v ?? "")}
       onMount={handleMount}
       theme={resolvedTheme === "dark" ? "codb-dark" : "codb-light"}

@@ -48,6 +48,7 @@ function EditorWorkspaceContent() {
         state,
         dispatch,
         activeTab,
+        handleCloseTab,
         handleReplayQuery,
         handleOpenSchemaTab,
         handleGenerateSelect,
@@ -126,13 +127,7 @@ function EditorWorkspaceContent() {
             {
                 ...CLOSE_TAB_SHORTCUT.binding,
                 handler: () => {
-                    if (!activeTab) return;
-                    const isDirty = activeTab.sql !== activeTab.savedSql;
-                    if (isDirty) {
-                        const ok = window.confirm(`"${activeTab.title}" has unsaved changes. Close anyway?`);
-                        if (!ok) return;
-                    }
-                    dispatch({ type: "CLOSE_TAB", tabId: state.activeTabId });
+                    void handleCloseTab(state.activeTabId);
                 },
             },
             ...TAB_SWITCH_SHORTCUTS.map((shortcut, index) => ({
@@ -157,7 +152,7 @@ function EditorWorkspaceContent() {
                 handler: () => handlePanelToggle("search"),
             },
         ],
-        [activeTab, dispatch, handleAddTab, handlePanelToggle, state.activeTabId, state.tabs],
+        [dispatch, handleAddTab, handleCloseTab, handlePanelToggle, state.activeTabId, state.tabs],
     );
 
     useKeyboardShortcuts(shortcuts);
@@ -171,7 +166,7 @@ function EditorWorkspaceContent() {
                     tabs={state.tabs}
                     activeTabId={state.activeTabId}
                     onSelect={(tabId) => dispatch({ type: "SET_ACTIVE_TAB", tabId })}
-                    onClose={(tabId) => dispatch({ type: "CLOSE_TAB", tabId })}
+                    onClose={handleCloseTab}
                     onAdd={handleAddTab}
                 />
 
