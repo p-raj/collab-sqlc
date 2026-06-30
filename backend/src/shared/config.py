@@ -62,8 +62,16 @@ class AssistantSettings(BaseSettings):
     model_config = {"env_prefix": "ASSISTANT_"}
 
 
+class WorkerSettings(BaseSettings):
+    concurrency: int = 10
+    result_preview_rows: int = 1000
+    sync_poll_interval_ms: int = 500
+
+    model_config = {"env_prefix": "WORKER_"}
+
+
 class AppSettings(BaseSettings):
-    app_name: str = "Open CoDB"
+    app_name: str = "Collab SQLC"
     debug: bool = False
     frontend_url: str = "http://localhost:5173"
     cors_origins: list[str] = ["http://localhost:5173"]
@@ -74,6 +82,7 @@ class AppSettings(BaseSettings):
     encryption: EncryptionSettings = EncryptionSettings()
     github_sso: GitHubSSOSettings = GitHubSSOSettings()
     assistant: AssistantSettings = AssistantSettings()
+    worker: WorkerSettings = WorkerSettings()
 
     model_config = {"env_prefix": "APP_"}
 

@@ -111,7 +111,7 @@ DATABASE_ENGINES: Final[dict[str, EnginePlugin]] = {
         dialect=_CLICKHOUSE_DIALECT,
         capabilities=EngineCapabilities(
             explain=True,
-            cancel=False,
+            cancel=True,
             streaming=False,
         ),
         explain=ExplainProfile(

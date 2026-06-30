@@ -13,17 +13,39 @@ export async function executeQuery(data: ExecuteRequest): Promise<QueryResult> {
   return api.post("queries/execute", { json: data }).json<QueryResult>();
 }
 
-export async function cancelQuery(queryId: string): Promise<{ cancelled: boolean }> {
-  return api.post("queries/cancel", { json: { query_id: queryId } }).json<{ cancelled: boolean }>();
+export interface QueryRun {
+  id: string;
+  status: "queued" | "running" | "success" | "error" | "cancelled" | "timeout";
+  backend_pid: number | null;
+  backend_query_id: string | null;
+  row_count: number | null;
+  max_rows: number | null;
+  execution_time_ms: number | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  cancellation_requested_at: string | null;
 }
 
-export interface RunningQueryInfo {
-  running: boolean;
-  pid: number | null;
+interface SubmitRunResponse {
+  run_id: string;
+  status: QueryRun["status"];
 }
 
-export async function getRunningQuery(queryId: string): Promise<RunningQueryInfo> {
-  return api.get(`queries/running/${queryId}`).json<RunningQueryInfo>();
+export async function submitQueryRun(data: ExecuteRequest): Promise<SubmitRunResponse> {
+  return api.post("queries/runs", { json: data }).json<SubmitRunResponse>();
+}
+
+export async function getQueryRun(runId: string): Promise<QueryRun> {
+  return api.get(`queries/runs/${runId}`).json<QueryRun>();
+}
+
+export async function getQueryRunResult(runId: string): Promise<QueryResult> {
+  return api.get(`queries/runs/${runId}/result`).json<QueryResult>();
+}
+
+export async function cancelQuery(runId: string): Promise<{ cancelled: boolean }> {
+  return api.post(`queries/runs/${runId}/cancel`).json<{ cancelled: boolean }>();
 }
 
 export async function exportQueryCsv(connectionId: string, sql: string): Promise<Blob> {

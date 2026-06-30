@@ -172,6 +172,7 @@ class DatabaseDriver(Protocol):
         params: dict[str, Any] | None = None,
         max_rows: int | None = None,
         read_only: bool = False,
+        backend_query_id: str | None = None,
     ) -> QueryResult: ...
 
     def stream(
@@ -195,6 +196,10 @@ class DatabaseDriver(Protocol):
 
     async def cancel(self, connection: Any) -> None: ...
 
-    async def cancel_backend(self, config: ConnectionConfig, backend_pid: int) -> bool: ...
+    async def cancel_backend(
+        self,
+        config: ConnectionConfig,
+        backend_identifier: int | str,
+    ) -> bool: ...
 
     async def test_connection(self, config: ConnectionConfig) -> bool: ...

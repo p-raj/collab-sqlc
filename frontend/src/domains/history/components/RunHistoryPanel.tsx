@@ -7,7 +7,9 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  StopCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuthStore } from "@/domains/auth/hooks/use-auth-store";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
 import { formatHistoryTimestamp } from "@/shared/utils/format-history-timestamp";
@@ -104,6 +106,23 @@ export function RunHistoryPanel({ connectionId, onReplayQuery }: RunHistoryPanel
     dispatch({ type: "RESET" });
   }, []);
 
+  const handleCancel = useCallback(
+    async (runId: string) => {
+      try {
+        const result = await historyApi.cancelRun(runId);
+        if (result.cancelled) {
+          toast.info("Query cancellation requested");
+          await loadHistory();
+        } else {
+          toast.warning("Could not cancel query");
+        }
+      } catch {
+        toast.error("Failed to cancel query");
+      }
+    },
+    [loadHistory],
+  );
+
   const currentPage = Math.floor(state.offset / PAGE_SIZE) + 1;
   const totalPages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
 
@@ -135,35 +154,61 @@ export function RunHistoryPanel({ connectionId, onReplayQuery }: RunHistoryPanel
       )}
 
       {/* Entries */}
-      {state.entries.map((entry) => (
-        <button
-          key={entry.id}
-          onClick={() => onReplayQuery(entry.sql)}
-          className="flex items-start gap-1.5 px-2 py-1.5 text-left text-xs hover:bg-accent/50"
-          title={`Click to load query\n${entry.sql}`}
-        >
-          {entry.status === "success" ? (
-            <CheckCircle2 size={10} className="mt-0.5 shrink-0 text-muted-foreground/60" />
-          ) : (
-            <XCircle size={10} className="mt-0.5 shrink-0 text-destructive/60" />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-foreground">{entry.sql}</p>
-            <p className="text-[0.75rem] text-muted-foreground/60">
-              {isAdmin && (entry.user_display_name || entry.user_email)
-                ? `${entry.user_display_name ?? "Unknown user"}${entry.user_email ? ` · ${entry.user_email}` : ""} · `
-                : ""}
-            </p>
-            <p className="text-[0.75rem] text-muted-foreground/60">
-              {entry.status === "success"
-                ? `${entry.row_count ?? 0} rows · ${entry.execution_time_ms?.toFixed(0) ?? "?"}ms`
-                : (entry.error_message?.slice(0, 60) ?? "Error")}
-              {" · "}
-              {formatHistoryTimestamp(entry.created_at)}
-            </p>
+      {state.entries.map((entry) => {
+        const isActive = entry.status === "queued" || entry.status === "running";
+        return (
+          <div
+            key={entry.id}
+            className="flex items-start gap-1.5 px-2 py-1.5 text-xs hover:bg-accent/50"
+          >
+            <button
+              onClick={() => onReplayQuery(entry.sql)}
+              className="flex min-w-0 flex-1 items-start gap-1.5 text-left"
+              title={`Click to load query\n${entry.sql}`}
+            >
+              {entry.status === "success" ? (
+                <CheckCircle2 size={10} className="mt-0.5 shrink-0 text-muted-foreground/60" />
+              ) : isActive ? (
+                <Loader2 size={10} className="mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+              ) : (
+                <XCircle size={10} className="mt-0.5 shrink-0 text-destructive/60" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-foreground">{entry.sql}</p>
+                <p className="text-[0.75rem] text-muted-foreground/60">
+                  {isAdmin && (entry.user_display_name || entry.user_email)
+                    ? `${entry.user_display_name ?? "Unknown user"}${entry.user_email ? ` · ${entry.user_email}` : ""} · `
+                    : ""}
+                  {entry.source === "query_api" ? "API · " : ""}
+                  {entry.status}
+                </p>
+                <p className="text-[0.75rem] text-muted-foreground/60">
+                  {entry.status === "success"
+                    ? `${entry.row_count ?? 0} rows · ${entry.execution_time_ms?.toFixed(0) ?? "?"}ms`
+                    : isActive
+                      ? entry.backend_pid
+                        ? `PID ${entry.backend_pid}`
+                        : entry.backend_query_id
+                          ? `Query ${entry.backend_query_id.slice(0, 8)}`
+                          : "Waiting for worker"
+                      : (entry.error_message?.slice(0, 60) ?? entry.status)}
+                  {" · "}
+                  {formatHistoryTimestamp(entry.created_at)}
+                </p>
+              </div>
+            </button>
+            {isActive && (
+              <button
+                onClick={() => handleCancel(entry.id)}
+                className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-destructive"
+                title="Cancel run"
+              >
+                <StopCircle size={12} />
+              </button>
+            )}
           </div>
-        </button>
-      ))}
+        );
+      })}
 
       {/* Empty */}
       {state.entries.length === 0 && !state.isLoading && (

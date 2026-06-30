@@ -17,3 +17,7 @@ export async function fetchRunHistory(
 export async function clearRunHistory(): Promise<void> {
   await api.delete("history");
 }
+
+export async function cancelRun(runId: string): Promise<{ cancelled: boolean }> {
+  return api.post(`queries/runs/${runId}/cancel`).json<{ cancelled: boolean }>();
+}

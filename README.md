@@ -39,7 +39,7 @@ Collab SQLC gives your team a shared workspace for writing, running, and organiz
 - **Favorites** — Quick-access to frequently used queries
 - **Fork** — Duplicate shared queries into your own workspace
 - **Search** — Full-text search across all saved queries
-- **Run History** — Complete execution history with timing, row counts, and replay
+- **Run History** — Durable execution history with queued/running/success/error/cancelled states, timing, row counts, replay, and cancellation
 
 ### Collaboration
 - **Shared Queries** — Share queries with the team (read-only for non-owners)
@@ -48,6 +48,7 @@ Collab SQLC gives your team a shared workspace for writing, running, and organiz
 
 ### APIs & Automation
 - **Query-as-API** — Publish saved queries as authenticated HTTP endpoints with per-query API keys
+- **Async Query Runs** — Long-running editor queries and hosted API calls run through Redis-backed workers with status/result endpoints
 - **Dynamic Parameters** — Hosted queries support typed `{name:type}` and untyped `$name` parameters with driver-native binds for PostgreSQL and ClickHouse
 - **Quick-Start Snippets** — Copy ready-to-run cURL, JavaScript, and Python examples from the query configuration panel
 - **API Execution Logs** — Review hosted-query calls and load the exact logged SQL, params, results, or errors back into the editor
@@ -88,7 +89,8 @@ Collab SQLC gives your team a shared workspace for writing, running, and organiz
 ### Prerequisites
 
 - **Docker & Docker Compose** (for production or infrastructure)
-- **uv** (for the Python CLI and backend dependency management)
+- **Go 1.25+** (for the project CLI)
+- **uv** (for backend dependency management)
 - **Node.js 22+** (for frontend development)
 - **Python 3.12** (for backend development)
 
@@ -96,19 +98,19 @@ Collab SQLC gives your team a shared workspace for writing, running, and organiz
 
 ```bash
 # First-time setup — installs deps, creates .env, sets up Python venv
-uv run ./codb init
+./codb init
 
 # Start infrastructure (PostgreSQL + Redis)
-uv run ./codb start:infra
+./codb start infra
 
 # Run database migrations
-uv run ./codb migrate
+./codb migrate
 
 # Create the first admin user
-uv run ./codb users create-admin
+./codb users create-admin
 
-# Start backend + frontend with hot reload
-uv run ./codb start
+# Start backend + query worker + frontend with hot reload
+./codb start
 ```
 
 Open [http://localhost:5173](http://localhost:5173) and sign in with your admin credentials.
@@ -132,7 +134,7 @@ docker compose up -d
 docker compose exec backend uv run alembic upgrade head
 
 # Create the first admin user
-uv run ./codb users create-admin
+./codb users create-admin
 ```
 
 Open [http://localhost](http://localhost).
@@ -158,6 +160,14 @@ All settings are via environment variables. See [`.env.example`](.env.example) f
 | `REDIS_URL` | Redis (caching + rate limiting) | `redis://localhost:6379/0` |
 | `APP_DEBUG` | Debug mode + API docs at `/api/docs` | `false` |
 | `APP_CORS_ORIGINS` | Allowed CORS origins as a JSON list | `["http://localhost:5173","http://localhost:3000"]` |
+
+### Query Workers
+
+| Variable | Description | Default |
+|---|---|---|
+| `WORKER_CONCURRENCY` | Maximum concurrent async query tasks per worker process | `10` |
+| `WORKER_RESULT_PREVIEW_ROWS` | Stored preview rows per completed run | `1000` |
+| `WORKER_SYNC_POLL_INTERVAL_MS` | Backend poll interval for sync-compatible editor execution | `500` |
 
 ### Auth & SSO
 
@@ -187,41 +197,38 @@ All settings are via environment variables. See [`.env.example`](.env.example) f
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌──────────────┐
-│  Browser     │────▶│  Nginx / Vite    │────▶│  FastAPI      │
-│  React 19    │     │  (static + proxy)│     │  (async)      │
-│  Monaco      │     └──────────────────┘     └──────┬───────┘
-│  AG Grid     │                                     │
-└─────────────┘                               ┌──────┴───────┐
-                                              │              │
-                                         ┌────▼────┐   ┌─────▼─────┐
-                                         │  App DB │   │   Redis   │
-                                         │  (PG)   │   │  (cache)  │
-                                         └─────────┘   └───────────┘
-                                              │
-                                     ┌────────┴────────┐
-                                     │   Target DBs    │
-                                     │  PostgreSQL     │
-                                     │  ClickHouse     │
-                                     │  (via SSH too)  │
-                                     └─────────────────┘
+Browser / React
+      │
+      ▼
+Nginx or Vite proxy
+      │
+      ▼
+FastAPI API ───────▶ PostgreSQL app DB
+      │                    ▲
+      │                    │
+      ▼                    │
+Redis cache + job queue ─▶ Taskiq worker
+                           │
+                           ▼
+                  Target databases
+             PostgreSQL · ClickHouse
 ```
 
 | Layer | Stack |
 |---|---|
 | **Frontend** | React 19 · TypeScript (strict) · Vite · Tailwind CSS · Monaco Editor · AG Grid · Zustand · ky |
-| **Backend** | Python 3.12 · FastAPI · SQLAlchemy (async) · Pydantic v2 · asyncpg · Redis · Loguru |
-| **CLI** | Python · Typer · uv script launcher for setup, dev, quality checks, and deploy |
-| **Infrastructure** | PostgreSQL 18 (app DB) · Redis 7 (cache + rate limits) · Docker Compose |
+| **Backend** | Python 3.12 · FastAPI · SQLAlchemy (async) · Pydantic v2 · asyncpg · Redis · Taskiq · Loguru |
+| **CLI** | Go · Cobra · Docker Compose orchestration |
+| **Infrastructure** | PostgreSQL 18 (app DB) · Redis 7 (cache, rate limits, async jobs) · Docker Compose |
 
 ---
 
 ## CLI Reference
 
-All project commands go through the Typer CLI:
+All project commands go through the Go CLI:
 
 ```bash
-uv run ./codb <command>
+./codb <command>
 ```
 
 ```
@@ -230,12 +237,13 @@ SETUP
   doctor                  Check that all required tools are installed
 
 DEVELOPMENT
-  start                   Start all services (db, redis, backend, frontend)
-  start:infra             Start only infrastructure (db, redis)
-  start:backend           Start backend dev server
-  start:frontend          Start frontend dev server
+  start                   Start all services (db, redis, backend, worker, frontend)
+  start infra             Start only infrastructure (db, redis)
+  start backend           Start backend dev server
+  start worker            Start query worker
+  start frontend          Start frontend dev server
   stop                    Stop all Docker services
-  logs [service]          Tail logs (backend|frontend|db|redis or all)
+  logs [service]          Tail logs (backend|worker|frontend|db|redis or all)
 
 DATABASE
   migrate                 Run all pending migrations (upgrade head)
@@ -269,9 +277,10 @@ CODE QUALITY
 
 BUILD & DEPLOY
   build                   Build for production
-  deploy                  Deploy with Docker Compose
-  deploy:down             Stop production stack
-  deploy:ps               Show production service status
+  deploy                  Build and start production Docker stack
+  deploy build            Build Docker images
+  deploy up               Start production stack
+  deploy down             Stop production stack
 ```
 
 ---
@@ -287,10 +296,10 @@ All endpoints are under `/api`. Interactive docs available at `/api/docs` when `
 | `/api/admin/audit-logs` | Audit log viewer (admin only) |
 | `/api/admin/settings` | SSO configuration (admin only) |
 | `/api/connections` | Connection CRUD, test connectivity |
-| `/api/queries` | Execute, cancel, export, format SQL |
+| `/api/queries` | Submit query runs, poll status, fetch results, cancel, export, format SQL |
 | `/api/saved-queries` | Saved query CRUD, versions, favorites, fork |
 | `/api/folders` | Query folder organization |
-| `/api/history` | Run history |
+| `/api/history` | Run history and lifecycle metadata |
 | `/api/schema` | Schema introspection, cache management |
 | `/api/assistant` | AI SQL suggestions |
 
@@ -312,7 +321,7 @@ Contributions are welcome. Please open an issue first to discuss what you'd like
 
 ```bash
 # Run all quality checks before submitting a PR
-uv run ./codb check
+./codb check
 ```
 
 ---

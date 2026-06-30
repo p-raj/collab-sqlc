@@ -2,7 +2,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useReducer,
   useRef,
@@ -11,10 +10,11 @@ import {
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import {
-  executeQuery,
+  getQueryRun,
+  getQueryRunResult,
+  submitQueryRun,
   explainQuery,
   cancelQuery,
-  getRunningQuery,
   exportQueryCsv,
   exportQueryJson,
   formatSql,
@@ -67,6 +67,12 @@ interface EditorContextValue {
 
 const EditorContext = createContext<EditorContextValue | null>(null);
 
+const RUN_POLL_INTERVAL_MS = 750;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getCloseTabMessage(tab: Tab): string | null {
   const isDirty = tab.sql !== tab.savedSql;
   if (tab.isExecuting && isDirty) {
@@ -96,17 +102,6 @@ export function EditorProvider({
   const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
   // Track last executed SQL per tab for export
   const lastExecutedSqlRef = useRef<Map<string, { sql: string; connectionId: string }>>(new Map());
-  const pidTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
-
-  useEffect(() => {
-    const timers = pidTimersRef.current;
-    return () => {
-      for (const timer of timers.values()) {
-        clearTimeout(timer);
-      }
-      timers.clear();
-    };
-  }, []);
 
   const handleCloseTab = useCallback(
     async (tabId: string) => {
@@ -137,11 +132,6 @@ export function EditorProvider({
           return;
         }
 
-        const pidTimer = pidTimersRef.current.get(tab.runningQueryId);
-        if (pidTimer) {
-          clearTimeout(pidTimer);
-          pidTimersRef.current.delete(tab.runningQueryId);
-        }
       }
 
       dispatch({ type: "CLOSE_TAB", tabId });
@@ -163,36 +153,41 @@ export function EditorProvider({
 
       const vars = extractSmartVariables(rawSql);
       const sqlToRun = substituteSmartVariables(rawSql, vars, activeTab.variables);
-      const queryId = crypto.randomUUID();
       const tabId = activeTab.id;
       const runningDbType =
         connections.find((connection) => connection.id === connectionId)?.db_type ?? null;
 
-      dispatch({ type: "START_EXECUTION", tabId, queryId, dbType: runningDbType });
-
-      // Fetch backend PID shortly after execute starts (server needs a moment to register)
-      const pidTimer = setTimeout(() => {
-        getRunningQuery(queryId)
-          .then((info) => {
-            if (info.pid) {
-              dispatch({ type: "SET_BACKEND_PID", tabId, queryId, pid: info.pid });
-            }
-          })
-          .catch(() => {
-            /* ignore — best-effort */
-          });
-      }, 300);
-      pidTimersRef.current.set(queryId, pidTimer);
-
       try {
-        const result = await executeQuery({
+        const submitted = await submitQueryRun({
           connection_id: connectionId,
           sql: sqlToRun,
           write_mode: activeTab.writeMode,
-          query_id: queryId,
         });
-        lastExecutedSqlRef.current.set(tabId, { sql: sqlToRun, connectionId });
-        dispatch({ type: "SET_RESULT", tabId, result, sql: sqlToRun, queryId });
+        const runId = submitted.run_id;
+        dispatch({ type: "START_EXECUTION", tabId, queryId: runId, dbType: runningDbType });
+
+        while (true) {
+          const run = await getQueryRun(runId);
+          if (run.backend_pid) {
+            dispatch({ type: "SET_BACKEND_PID", tabId, queryId: runId, pid: run.backend_pid });
+          }
+          if (run.status === "success") {
+            const result = await getQueryRunResult(runId);
+            lastExecutedSqlRef.current.set(tabId, { sql: sqlToRun, connectionId });
+            dispatch({ type: "SET_RESULT", tabId, result, sql: sqlToRun, queryId: runId });
+            return;
+          }
+          if (["error", "cancelled", "timeout"].includes(run.status)) {
+            const message = run.error_message ?? `Query finished with status ${run.status}`;
+            const isCancellation = run.status === "cancelled";
+            if (!isCancellation) {
+              toast.error("Query failed", { description: message });
+            }
+            dispatch({ type: "SET_ERROR", tabId, error: message, queryId: runId });
+            return;
+          }
+          await sleep(RUN_POLL_INTERVAL_MS);
+        }
       } catch (err) {
         let message = "Query execution failed";
         let position: number | null = null;
@@ -212,10 +207,7 @@ export function EditorProvider({
         if (!isCancellation) {
           toast.error("Query failed", { description: message });
         }
-        dispatch({ type: "SET_ERROR", tabId, error: message, position, queryId });
-      } finally {
-        clearTimeout(pidTimer);
-        pidTimersRef.current.delete(queryId);
+        dispatch({ type: "SET_ERROR", tabId, error: message, position });
       }
     },
     [activeConnectionId, activeTab, connections],
@@ -241,19 +233,6 @@ export function EditorProvider({
         connections.find((connection) => connection.id === connectionId)?.db_type ?? null;
 
       dispatch({ type: "START_EXECUTION", tabId, queryId, dbType: runningDbType });
-
-      const pidTimer = setTimeout(() => {
-        getRunningQuery(queryId)
-          .then((info) => {
-            if (info.pid) {
-              dispatch({ type: "SET_BACKEND_PID", tabId, queryId, pid: info.pid });
-            }
-          })
-          .catch(() => {
-            /* ignore */
-          });
-      }, 300);
-      pidTimersRef.current.set(queryId, pidTimer);
 
       try {
         const result = await explainQuery({
@@ -289,9 +268,6 @@ export function EditorProvider({
           toast.error("EXPLAIN failed", { description: message });
         }
         dispatch({ type: "SET_ERROR", tabId, error: message, position, queryId });
-      } finally {
-        clearTimeout(pidTimer);
-        pidTimersRef.current.delete(queryId);
       }
     },
     [activeConnectionId, activeTab, connections],

@@ -1,5 +1,7 @@
 """Query execution API routes."""
 
+import asyncio
+import contextlib
 import csv
 import io
 from collections.abc import AsyncIterator
@@ -8,6 +10,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.api.dependencies import get_current_user
 from src.auth.domain.schemas import CurrentUser
@@ -21,11 +24,22 @@ from src.editor.service.query_executor import (
     RunningQueryInfo,
 )
 from src.history.api.dependencies import get_history_service
+from src.history.domain.schemas import (
+    CancelRunResponse,
+    RunHistoryResponse,
+    RunResultResponse,
+    RunSource,
+    RunStatus,
+    RunSubmitResponse,
+)
 from src.history.service.history_service import HistoryService
+from src.history.tasks import execute_query_run
 from src.query_api.service.param_substitution import (
     mask_parameters_for_format,
     restore_parameters_after_format,
 )
+from src.shared.config import AppSettings, get_settings
+from src.shared.database import get_session
 from src.shared.domain.errors import ValidationError
 from src.shared.domain.schemas import ApiSchema
 
@@ -77,6 +91,132 @@ class FormatSqlResponse(ApiSchema):
 
 @router.post("/execute", response_model=ExecuteQueryResponse)
 async def execute_query(
+    body: ExecuteQueryRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    conn_service: Annotated[ConnectionService, Depends(get_connection_service)],
+    history_service: Annotated[HistoryService, Depends(get_history_service)],
+    settings: Annotated[AppSettings, Depends(get_settings)],
+) -> ExecuteQueryResponse:
+    conn_model = await conn_service.get_for_user(body.connection_id, user.id, user.role)
+    run = await _create_editor_run(body, user, conn_model.query_timeout_seconds, history_service)
+    await session.commit()
+    await execute_query_run.kiq(run.id)
+
+    timeout_seconds = run.timeout_seconds or conn_model.query_timeout_seconds
+    deadline = asyncio.get_running_loop().time() + timeout_seconds + 5
+    poll_interval = settings.worker.sync_poll_interval_ms / 1000
+
+    while asyncio.get_running_loop().time() < deadline:
+        await session.refresh(run)
+        if run.status == RunStatus.SUCCESS:
+            result = await history_service.get_result_for_user(run.id, user)
+            return ExecuteQueryResponse(
+                columns=result.columns,
+                column_types=result.column_types,
+                rows=result.rows,
+                row_count=result.row_count,
+                execution_time_ms=result.execution_time_ms,
+            )
+        if run.status in {RunStatus.ERROR, RunStatus.CANCELLED, RunStatus.TIMEOUT}:
+            raise ValidationError(run.error_message or f"Query finished with status {run.status}")
+        await asyncio.sleep(poll_interval)
+
+    await history_service.request_cancel_for_user(run.id, user)
+    backend_identifier = run.backend_pid or run.backend_query_id
+    if backend_identifier is not None:
+        with contextlib.suppress(Exception):
+            driver = conn_service.get_driver(conn_model)
+            config = await conn_service.get_connection_config(conn_model)
+            await driver.cancel_backend(config, backend_identifier)
+    await session.commit()
+    raise ValidationError("Query is still running. Use async run APIs to fetch it later.")
+
+
+@router.post("/runs", response_model=RunSubmitResponse)
+async def submit_query_run(
+    body: ExecuteQueryRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    conn_service: Annotated[ConnectionService, Depends(get_connection_service)],
+    history_service: Annotated[HistoryService, Depends(get_history_service)],
+) -> RunSubmitResponse:
+    conn_model = await conn_service.get_for_user(body.connection_id, user.id, user.role)
+    run = await _create_editor_run(body, user, conn_model.query_timeout_seconds, history_service)
+    await session.commit()
+    await execute_query_run.kiq(run.id)
+    return RunSubmitResponse(run_id=run.id, status=run.status)
+
+
+@router.get("/runs/{run_id}", response_model=RunHistoryResponse)
+async def get_query_run(
+    run_id: str,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    history_service: Annotated[HistoryService, Depends(get_history_service)],
+) -> RunHistoryResponse:
+    return await history_service.get_run_for_user(run_id, user)
+
+
+@router.get("/runs/{run_id}/result", response_model=RunResultResponse)
+async def get_query_run_result(
+    run_id: str,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    history_service: Annotated[HistoryService, Depends(get_history_service)],
+) -> RunResultResponse:
+    return await history_service.get_result_for_user(run_id, user)
+
+
+@router.post("/runs/{run_id}/cancel", response_model=CancelRunResponse)
+async def cancel_query_run(
+    run_id: str,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    conn_service: Annotated[ConnectionService, Depends(get_connection_service)],
+    history_service: Annotated[HistoryService, Depends(get_history_service)],
+) -> CancelRunResponse:
+    run = await history_service.request_cancel_for_user(run_id, user)
+
+    if run.status == RunStatus.QUEUED:
+        await history_service.mark_cancelled(run, "Query cancelled before execution")
+        await session.commit()
+        return CancelRunResponse(cancelled=True)
+
+    accepted = True
+    backend_identifier = run.backend_pid or run.backend_query_id
+    if backend_identifier is not None:
+        try:
+            conn_model = await conn_service.get_for_user(run.connection_id, user.id, user.role)
+            driver = conn_service.get_driver(conn_model)
+            config = await conn_service.get_connection_config(conn_model)
+            accepted = await driver.cancel_backend(config, backend_identifier)
+        except Exception:
+            accepted = False
+
+    await session.commit()
+    return CancelRunResponse(cancelled=accepted)
+
+
+async def _create_editor_run(
+    body: ExecuteQueryRequest,
+    user: CurrentUser,
+    timeout_seconds: int,
+    history_service: HistoryService,
+):
+    return await history_service.create_run(
+        user_id=user.id,
+        connection_id=body.connection_id,
+        sql=body.sql,
+        source=RunSource.EDITOR,
+        params=body.params,
+        write_mode=body.write_mode,
+        user_role=user.role,
+        timeout_seconds=timeout_seconds,
+        status=RunStatus.QUEUED,
+    )
+
+
+@router.post("/execute-direct", response_model=ExecuteQueryResponse, include_in_schema=False)
+async def execute_query_direct_compat(
     body: ExecuteQueryRequest,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     executor: Annotated[QueryExecutor, Depends(get_query_executor)],

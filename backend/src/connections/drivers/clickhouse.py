@@ -69,6 +69,7 @@ class ClickHouseDriver:
         params: dict[str, Any] | None = None,
         max_rows: int | None = None,
         read_only: bool = False,
+        backend_query_id: str | None = None,
     ) -> QueryResult:
         start = time.perf_counter()
         settings: dict[str, Any] = {}
@@ -81,6 +82,9 @@ class ClickHouseDriver:
             sql,
             parameters=params or {},
             settings=settings or None,
+            transport_settings=(
+                {"query_id": backend_query_id} if backend_query_id is not None else None
+            ),
         )
         elapsed = (time.perf_counter() - start) * 1000
 
@@ -162,14 +166,29 @@ class ClickHouseDriver:
         return TableMetadataInfo(properties=properties)
 
     async def cancel(self, connection: clickhouse_connect.driver.Client) -> None:
-        # ClickHouse connect doesn't support query cancellation directly
+        # Cancellation is query-id based for ClickHouse, so callers should use
+        # cancel_backend() with the persisted backend_query_id.
         pass
 
     def get_backend_pid(self, connection: clickhouse_connect.driver.Client) -> int | None:
         return None
 
-    async def cancel_backend(self, config: ConnectionConfig, backend_pid: int) -> bool:
-        return False
+    async def cancel_backend(self, config: ConnectionConfig, backend_identifier: int | str) -> bool:
+        conn = None
+        try:
+            conn = await self.connect(config)
+            query_id = str(backend_identifier)
+            await asyncio.to_thread(
+                conn.command,
+                "KILL QUERY WHERE query_id = {query_id:String} SYNC",
+                parameters={"query_id": query_id},
+            )
+            return True
+        except Exception:
+            return False
+        finally:
+            if conn is not None:
+                await self.disconnect(conn)
 
     async def test_connection(self, config: ConnectionConfig) -> bool:
         conn = None

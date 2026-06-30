@@ -27,6 +27,36 @@ services:
       timeout: 5s
       retries: 3
 
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      args:
+        BACKEND_PORT: ${BACKEND_PORT:-8000}
+    env_file:
+      - ../.env
+    environment:
+      - DB_URL=postgresql+asyncpg://postgres:postgres@db:5432/collabsql
+      - REDIS_URL=redis://redis:6379/0
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-10}
+    command:
+      - uv
+      - run
+      - taskiq
+      - worker
+      - src.jobs.broker:broker
+      - --fs-discover
+      - --ack-type
+      - when_executed
+      - --max-async-tasks
+      - ${WORKER_CONCURRENCY:-10}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build:
       context: ../frontend
@@ -83,6 +113,27 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+
+  cli:
+    build:
+      context: ../cli
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      - DB_URL=postgresql+asyncpg://postgres:postgres@db:5432/collabsql
+      - DB_HOST=db
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+    volumes:
+      - ..:/project
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles:
+      - cli
 
 volumes:
   pgdata:

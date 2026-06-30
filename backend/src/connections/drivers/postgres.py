@@ -171,6 +171,7 @@ class PostgresDriver:
         params: dict[str, Any] | None = None,
         max_rows: int | None = None,
         read_only: bool = False,
+        backend_query_id: str | None = None,
     ) -> QueryResult:
         start = time.perf_counter()
         stmt = await connection.prepare(sql)
@@ -319,10 +320,13 @@ class PostgresDriver:
     def get_backend_pid(self, connection: asyncpg.Connection) -> int | None:
         return int(connection.get_server_pid())
 
-    async def cancel_backend(self, config: ConnectionConfig, backend_pid: int) -> bool:
+    async def cancel_backend(self, config: ConnectionConfig, backend_identifier: int | str) -> bool:
         connection = await self.connect(config)
         try:
-            result = await connection.fetchval("SELECT pg_cancel_backend($1)", backend_pid)
+            result = await connection.fetchval(
+                "SELECT pg_cancel_backend($1)",
+                int(backend_identifier),
+            )
             return bool(result)
         finally:
             await self.disconnect(connection)

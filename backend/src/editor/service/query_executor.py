@@ -16,11 +16,16 @@ from src.shared.domain.errors import ForbiddenError, ValidationError
 from src.shared.domain.types import UserRole
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from src.connections.domain.models import ConnectionModel
     from src.connections.drivers.base import ConnectionConfig, DatabaseDriver, QueryResult
     from src.connections.service.connection_service import ConnectionService
+
+    RunningCallback = Callable[
+        [DatabaseDriver, ConnectionConfig, int | None, str | None],
+        Awaitable[None],
+    ]
 
 _semaphores: dict[str, asyncio.Semaphore] = {}
 
@@ -46,6 +51,7 @@ class _RunningQuery:
     config: ConnectionConfig
     connection: Any
     backend_pid: int | None
+    backend_query_id: str | None
     user_id: str  # Owner of this query
     supports_cancel: bool
     cancelled: bool = False
@@ -86,15 +92,6 @@ class QueryExecutor:
                 " INSERT, UPDATE, DELETE, or DDL queries."
             )
 
-        if (
-            conn_model.safe_mode
-            and user_role == UserRole.EDITOR
-            and not is_read_only_query(sql, db_type)
-        ):
-            raise ForbiddenError(
-                "Safe mode is enabled on this connection. Disable safe mode to run write queries."
-            )
-
         if not sql.strip():
             raise ValidationError("Query cannot be empty")
 
@@ -111,6 +108,9 @@ class QueryExecutor:
         write_mode: bool = False,
         query_id: str | None = None,
         user_id: str = "",
+        timeout_seconds: int | None = None,
+        max_rows: int | None = None,
+        on_running: RunningCallback | None = None,
     ) -> QueryResult:
         self._check_permissions(sql, user_role, conn_model, write_mode=write_mode)
 
@@ -118,9 +118,11 @@ class QueryExecutor:
             conn_model=conn_model,
             sql=sql,
             params=params,
-            timeout_seconds=conn_model.query_timeout_seconds,
+            timeout_seconds=timeout_seconds or conn_model.query_timeout_seconds,
             query_id=query_id,
             user_id=user_id,
+            max_rows=max_rows,
+            on_running=on_running,
         )
 
     async def execute_direct(
@@ -135,6 +137,7 @@ class QueryExecutor:
         user_id: str = "",
         max_rows: int | None = None,
         read_only: bool = False,
+        on_running: RunningCallback | None = None,
     ) -> QueryResult:
         engine = get_database_engine(conn_model.db_type)
         driver = self._conn_service.get_driver(conn_model)
@@ -154,6 +157,7 @@ class QueryExecutor:
                 user_id=user_id,
                 max_rows=max_rows,
                 read_only=read_only,
+                on_running=on_running,
             )
 
     async def execute_read_only(
@@ -166,6 +170,7 @@ class QueryExecutor:
         query_id: str | None = None,
         user_id: str = "",
         max_rows: int | None = None,
+        on_running: RunningCallback | None = None,
     ) -> QueryResult:
         self._check_permissions(sql, UserRole.VIEWER, conn_model, write_mode=False)
         return await self.execute_direct(
@@ -177,6 +182,7 @@ class QueryExecutor:
             user_id=user_id,
             max_rows=max_rows,
             read_only=True,
+            on_running=on_running,
         )
 
     # ------------------------------------------------------------------
@@ -269,14 +275,15 @@ class QueryExecutor:
             logger.warning(f"Cancel not supported for query {query_id}")
             return False
 
-        if running.backend_pid is None:
-            logger.warning(f"No backend PID for query {query_id} — cannot cancel")
+        backend_identifier = running.backend_pid or running.backend_query_id
+        if backend_identifier is None:
+            logger.warning(f"No backend identifier for query {query_id} — cannot cancel")
             return False
 
         running.cancelled = True
 
         try:
-            return await running.driver.cancel_backend(running.config, running.backend_pid)
+            return await running.driver.cancel_backend(running.config, backend_identifier)
         except Exception:
             logger.warning(f"Failed to cancel query {query_id}", exc_info=True)
             return False
@@ -342,6 +349,7 @@ class QueryExecutor:
         user_id: str = "",
         max_rows: int | None = None,
         read_only: bool = False,
+        on_running: RunningCallback | None = None,
     ) -> QueryResult:
         connection = await driver.connect(config)
 
@@ -360,14 +368,24 @@ class QueryExecutor:
             config=config,
             connection=connection,
             backend_pid=backend_pid,
+            backend_query_id=qid,
             user_id=user_id,
             supports_cancel=supports_cancel,
         )
         _running_queries[qid] = running
+        if on_running is not None:
+            await on_running(driver, config, backend_pid, qid)
 
         try:
             result = await asyncio.wait_for(
-                driver.execute(connection, sql, params, max_rows=max_rows, read_only=read_only),
+                driver.execute(
+                    connection,
+                    sql,
+                    params,
+                    max_rows=max_rows,
+                    read_only=read_only,
+                    backend_query_id=qid,
+                ),
                 timeout=timeout_seconds,
             )
             return result
@@ -384,7 +402,7 @@ class QueryExecutor:
             if isinstance(exc, TimeoutError):
                 if supports_cancel:
                     try:
-                        await driver.cancel(connection)
+                        await driver.cancel_backend(config, backend_pid or qid)
                     except Exception:
                         logger.warning("Failed to cancel query after timeout", exc_info=True)
                 raise ValidationError(f"Query timed out after {timeout_seconds} seconds") from None

@@ -10,8 +10,12 @@ from argon2.exceptions import VerifyMismatchError
 from pydantic_core import to_jsonable_python
 from sqlalchemy import or_, select
 
+from src.auth.service.user_lookup_service import create_user_lookup_service
 from src.connections.domain.models import ConnectionModel
 from src.editor.service.sql_safety import is_read_only_query
+from src.history.domain.schemas import RunSource, RunStatus
+from src.history.repository.history_repository import RunHistoryRepository
+from src.history.service.history_service import HistoryService
 from src.queries.domain.models import QueryFolder, SavedQuery
 from src.query_api.domain.models import APIExecutionData, APIExecutionLog
 from src.query_api.domain.schemas import ExecuteAPIResponse
@@ -296,6 +300,7 @@ class QueryAPIService:
             await check_query_rate_limit(query_id, caller_ip, query.api_rate_limit)
 
         # Validate parameters
+        run = None
         try:
             conn_model = await self._get_hosted_connection(query, bound_connection_id)
         except NotFoundError:
@@ -331,6 +336,25 @@ class QueryAPIService:
                 conn_model=conn_model,
                 params=params,
             )
+            history = HistoryService(
+                RunHistoryRepository(session),
+                create_user_lookup_service(session),
+            )
+            run = await history.create_run(
+                user_id=query.created_by,
+                connection_id=bound_connection_id,
+                sql=final_sql,
+                source=RunSource.QUERY_API,
+                status=RunStatus.RUNNING,
+                params=bind_params,
+                write_mode=False,
+                user_role=UserRole.VIEWER,
+                timeout_seconds=timeout,
+                max_rows=query.api_row_limit,
+                api_query_id=query_id,
+                caller_ip=caller_ip,
+            )
+            await session.commit()
         except ValidationError as exc:
             await self._log_execution(
                 session,
@@ -344,15 +368,31 @@ class QueryAPIService:
                 str(exc),
             )
             raise
+
+        async def on_running(
+            _driver: Any,
+            _config: Any,
+            backend_pid: int | None,
+            backend_query_id: str | None,
+        ) -> None:
+            if run is not None:
+                await history.store_backend_pid(run, backend_pid)
+                await history.store_backend_query_id(run, backend_query_id)
+                await session.commit()
+
         try:
             result = await self._query_executor.execute_read_only(
                 conn_model=conn_model,
                 sql=final_sql,
                 params=bind_params,
                 timeout_seconds=timeout,
+                query_id=run.id if run is not None else None,
                 max_rows=query.api_row_limit,
+                on_running=on_running,
             )
         except ValidationError:
+            if run is not None:
+                await history.mark_timeout(run, f"Query timed out after {timeout}s")
             await self._log_execution(
                 session,
                 query_id,
@@ -368,6 +408,8 @@ class QueryAPIService:
                 "Query exceeded time limit. Check execution ID in logs."
             ) from None
         except Exception as e:
+            if run is not None:
+                await history.mark_error(run, str(e))
             await self._log_execution(
                 session,
                 query_id,
@@ -412,8 +454,165 @@ class QueryAPIService:
             response_data,
             None,
         )
+        if run is not None:
+            await history.mark_success(
+                run,
+                columns=result.columns,
+                column_types=result.column_types,
+                rows=rows,
+                row_count=len(rows),
+                execution_time_ms=result.execution_time_ms,
+                truncated=False,
+            )
 
         return response, execution_id
+
+    async def enqueue_async(
+        self,
+        session: AsyncSession,
+        query_id: str,
+        connection_id: str,
+        api_key: str,
+        caller_ip: str,
+        params: dict[str, Any],
+    ) -> tuple[str, str]:
+        """Validate a hosted query request and create a queued run.
+
+        Returns (execution_id, run_id). The caller commits and enqueues the worker task.
+        """
+        query = await self._get_active_query(session, query_id)
+        bound_connection_id = self._get_bound_connection_id(query)
+
+        if not query.api_key_hash or not _verify_api_key(api_key, query.api_key_hash):
+            await self._log_execution(
+                session,
+                query_id,
+                bound_connection_id,
+                caller_ip,
+                401,
+                None,
+                params,
+                None,
+                "Invalid API key",
+            )
+            raise ForbiddenError("Invalid API key.")
+
+        if connection_id != bound_connection_id:
+            await self._log_execution(
+                session,
+                query_id,
+                bound_connection_id,
+                caller_ip,
+                404,
+                None,
+                params,
+                None,
+                "Hosted query connection mismatch",
+            )
+            raise NotFoundError("Query", query_id)
+
+        if query.api_allowed_ips and caller_ip not in query.api_allowed_ips:
+            await self._log_execution(
+                session,
+                query_id,
+                bound_connection_id,
+                caller_ip,
+                403,
+                None,
+                params,
+                None,
+                f"IP {caller_ip} not allowed",
+            )
+            raise ForbiddenError("IP address not allowed.")
+
+        if query.api_rate_limit:
+            await check_query_rate_limit(query_id, caller_ip, query.api_rate_limit)
+
+        conn_model = await self._get_hosted_connection(query, bound_connection_id)
+        _sql, final_sql, bind_params, timeout = self._prepare_execution(
+            query=query,
+            conn_model=conn_model,
+            params=params,
+        )
+        history = HistoryService(
+            RunHistoryRepository(session),
+            create_user_lookup_service(session),
+        )
+        run = await history.create_run(
+            user_id=query.created_by,
+            connection_id=bound_connection_id,
+            sql=final_sql,
+            source=RunSource.QUERY_API,
+            status=RunStatus.QUEUED,
+            params=bind_params,
+            write_mode=False,
+            user_role=UserRole.VIEWER,
+            timeout_seconds=timeout,
+            max_rows=query.api_row_limit,
+            api_query_id=query_id,
+            caller_ip=caller_ip,
+        )
+        execution_id = await self._log_execution(
+            session,
+            query_id,
+            bound_connection_id,
+            caller_ip,
+            202,
+            None,
+            params,
+            {"run_id": run.id},
+            None,
+        )
+        return execution_id, run.id
+
+    async def get_async_run_status(
+        self,
+        session: AsyncSession,
+        query_id: str,
+        connection_id: str,
+        api_key: str,
+        run_id: str,
+    ) -> dict[str, Any]:
+        await self._verify_public_run_access(session, query_id, connection_id, api_key, run_id)
+        run = await HistoryService(
+            RunHistoryRepository(session),
+            create_user_lookup_service(session),
+        ).get_run(run_id)
+        return {
+            "run_id": run.id,
+            "status": run.status,
+            "backend_query_id": run.backend_query_id,
+            "row_count": run.row_count,
+            "execution_time_ms": run.execution_time_ms,
+            "error": run.error_message,
+            "started_at": run.started_at,
+            "finished_at": run.finished_at,
+        }
+
+    async def get_async_run_result(
+        self,
+        session: AsyncSession,
+        query_id: str,
+        connection_id: str,
+        api_key: str,
+        run_id: str,
+    ) -> dict[str, Any]:
+        await self._verify_public_run_access(session, query_id, connection_id, api_key, run_id)
+        history = HistoryService(
+            RunHistoryRepository(session),
+            create_user_lookup_service(session),
+        )
+        run = await history.get_run(run_id)
+        result = await RunHistoryRepository(session).get_result(run_id)
+        if result is None:
+            raise NotFoundError("Run result", run_id)
+        return {
+            "columns": result.columns,
+            "rows": result.rows,
+            "row_count": result.row_count,
+            "execution_time_ms": int(run.execution_time_ms or 0),
+            "truncated": result.truncated,
+        }
 
     async def test_execute(
         self,
@@ -764,6 +963,32 @@ class QueryAPIService:
         if not query:
             raise NotFoundError("Query", query_id)
         return query
+
+    async def _verify_public_run_access(
+        self,
+        session: AsyncSession,
+        query_id: str,
+        connection_id: str,
+        api_key: str,
+        run_id: str,
+    ) -> None:
+        query = await self._get_active_query(session, query_id)
+        bound_connection_id = self._get_bound_connection_id(query)
+        if connection_id != bound_connection_id:
+            raise NotFoundError("Query", query_id)
+        if not query.api_key_hash or not _verify_api_key(api_key, query.api_key_hash):
+            raise ForbiddenError("Invalid API key.")
+
+        run = await HistoryService(
+            RunHistoryRepository(session),
+            create_user_lookup_service(session),
+        ).get_run(run_id)
+        if (
+            run.source != RunSource.QUERY_API
+            or run.api_query_id != query_id
+            or run.connection_id != connection_id
+        ):
+            raise NotFoundError("Run", run_id)
 
     async def _log_execution(
         self,

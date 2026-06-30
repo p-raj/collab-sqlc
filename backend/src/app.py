@@ -1,4 +1,4 @@
-"""Open CoDB — FastAPI application factory."""
+"""Collab SQLC — FastAPI application factory."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from loguru import logger
 from starlette.responses import JSONResponse
 
 from src.connections.service.ssh_tunnel import close_all_tunnels
+from src.jobs.broker import broker
 from src.shared.config import AppSettings, get_settings
 from src.shared.database import close_engine, init_engine
 from src.shared.middleware.error_handler import ErrorHandlerMiddleware
@@ -28,7 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings: AppSettings = app.state.settings
 
     setup_logging(debug=settings.debug)
-    logger.info("Starting Open CoDB")
+    logger.info("Starting Collab SQLC")
 
     if settings.auth.secret_key == "change-me-in-production":
         if settings.debug:
@@ -49,11 +50,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     init_engine(settings)
     await init_redis(settings)
+    await broker.startup()
     logger.info("Database and Redis connected")
 
     yield
 
     await close_all_tunnels()
+    await broker.shutdown()
     await close_redis()
     await close_engine()
     logger.info("Shutdown complete")

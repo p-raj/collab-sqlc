@@ -2,7 +2,8 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,7 @@ from src.connections.api.dependencies import get_connection_service
 from src.connections.service.connection_service import ConnectionService
 from src.editor.api.dependencies import get_query_executor
 from src.editor.service.query_executor import QueryExecutor
+from src.history.tasks import execute_query_run
 from src.query_api.domain.schemas import ExecuteAPIRequest
 from src.query_api.service.query_api_service import QueryAPIService
 from src.shared.database import get_session
@@ -36,6 +38,7 @@ async def execute_api_query(
     body: ExecuteAPIRequest,
     service: Annotated[QueryAPIService, Depends(_get_service)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    mode: Annotated[str | None, Query(pattern="^(sync|async)$")] = None,
     x_api_key: str = Header(..., alias="X-API-Key"),
 ) -> JSONResponse:
     """Execute a hosted query via API key. No CoDB auth needed."""
@@ -43,6 +46,31 @@ async def execute_api_query(
     params = body.params or {}
 
     try:
+        if mode == "async":
+            execution_id, run_id = await service.enqueue_async(
+                session=session,
+                query_id=query_id,
+                connection_id=connection_id,
+                api_key=x_api_key,
+                caller_ip=caller_ip,
+                params=params,
+            )
+            await session.commit()
+            await execute_query_run.kiq(run_id)
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "execution_id": execution_id,
+                    "run_id": run_id,
+                    "status": "queued",
+                    "status_url": (
+                        f"/api/v1/q/{connection_id}/execute/{query_id}/runs/{run_id}"
+                    ),
+                    "result_url": (
+                        f"/api/v1/q/{connection_id}/execute/{query_id}/runs/{run_id}/result"
+                    ),
+                },
+            )
         response, execution_id = await service.execute(
             session=session,
             query_id=query_id,
@@ -76,3 +104,51 @@ async def execute_api_query(
         elif "execution failed" in msg.lower():
             status = 422
         return JSONResponse(status_code=status, content={"error": msg})
+
+
+@router.get("/{connection_id}/execute/{query_id}/runs/{run_id}")
+async def get_api_query_run(
+    connection_id: str,
+    query_id: str,
+    run_id: str,
+    service: Annotated[QueryAPIService, Depends(_get_service)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    x_api_key: str = Header(..., alias="X-API-Key"),
+) -> JSONResponse:
+    try:
+        status = await service.get_async_run_status(
+            session=session,
+            query_id=query_id,
+            connection_id=connection_id,
+            api_key=x_api_key,
+            run_id=run_id,
+        )
+        return JSONResponse(status_code=200, content=jsonable_encoder(status))
+    except NotFoundError:
+        return JSONResponse(status_code=404, content={"error": "Run not found."})
+    except ForbiddenError as e:
+        return JSONResponse(status_code=401, content={"error": str(e)})
+
+
+@router.get("/{connection_id}/execute/{query_id}/runs/{run_id}/result")
+async def get_api_query_run_result(
+    connection_id: str,
+    query_id: str,
+    run_id: str,
+    service: Annotated[QueryAPIService, Depends(_get_service)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    x_api_key: str = Header(..., alias="X-API-Key"),
+) -> JSONResponse:
+    try:
+        result = await service.get_async_run_result(
+            session=session,
+            query_id=query_id,
+            connection_id=connection_id,
+            api_key=x_api_key,
+            run_id=run_id,
+        )
+        return JSONResponse(status_code=200, content=jsonable_encoder(result))
+    except NotFoundError:
+        return JSONResponse(status_code=404, content={"error": "Run result not found."})
+    except ForbiddenError as e:
+        return JSONResponse(status_code=401, content={"error": str(e)})
