@@ -12,6 +12,9 @@ import {
 import { toast } from "sonner";
 import { useAuthStore } from "@/domains/auth/hooks/use-auth-store";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
+import { EmptyState, LoadingState } from "@/shared/components/ui/DataState";
+import { IconButton } from "@/shared/components/ui/IconButton";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
 import { formatHistoryTimestamp } from "@/shared/utils/format-history-timestamp";
 import * as historyApi from "../services/history-api";
 import type { RunHistoryEntry } from "../types";
@@ -135,22 +138,20 @@ export function RunHistoryPanel({ connectionId, onReplayQuery }: RunHistoryPanel
           <span className="text-xs font-medium text-muted-foreground">Run History</span>
         </div>
         {!isAdmin && state.entries.length > 0 && (
-          <button
+          <IconButton
+            aria-label="Clear history"
             onClick={() => setShowClearConfirm(true)}
-            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-destructive"
+            variant="danger"
+            size="xs"
+            icon={<Trash2 size={12} />}
             title="Clear history"
-          >
-            <Trash2 size={12} />
-          </button>
+          />
         )}
       </div>
 
       {/* Loading */}
       {state.isLoading && state.entries.length === 0 && (
-        <div className="flex items-center gap-1.5 px-2 py-3">
-          <Loader2 size={12} className="animate-spin text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Loading...</span>
-        </div>
+        <LoadingState label="Loading history" showLabel className="justify-start px-2 py-3" />
       )}
 
       {/* Entries */}
@@ -161,18 +162,20 @@ export function RunHistoryPanel({ connectionId, onReplayQuery }: RunHistoryPanel
             key={entry.id}
             className="flex items-start gap-1.5 px-2 py-1.5 text-xs hover:bg-accent/50"
           >
-            <button
+            <ObjectListItem
               onClick={() => onReplayQuery(entry.sql)}
-              className="flex min-w-0 flex-1 items-start gap-1.5 text-left"
+              className="items-start p-0 hover:bg-transparent"
+              indicator={
+                entry.status === "success" ? (
+                  <CheckCircle2 size={10} className="mt-0.5 shrink-0 text-muted-foreground/60" />
+                ) : isActive ? (
+                  <Loader2 size={10} className="mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+                ) : (
+                  <XCircle size={10} className="mt-0.5 shrink-0 text-destructive/60" />
+                )
+              }
               title={`Click to load query\n${entry.sql}`}
             >
-              {entry.status === "success" ? (
-                <CheckCircle2 size={10} className="mt-0.5 shrink-0 text-muted-foreground/60" />
-              ) : isActive ? (
-                <Loader2 size={10} className="mt-0.5 shrink-0 animate-spin text-muted-foreground" />
-              ) : (
-                <XCircle size={10} className="mt-0.5 shrink-0 text-destructive/60" />
-              )}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-foreground">{entry.sql}</p>
                 <p className="text-[0.75rem] text-muted-foreground/60">
@@ -196,15 +199,16 @@ export function RunHistoryPanel({ connectionId, onReplayQuery }: RunHistoryPanel
                   {formatHistoryTimestamp(entry.created_at)}
                 </p>
               </div>
-            </button>
+            </ObjectListItem>
             {isActive && (
-              <button
+              <IconButton
+                aria-label="Cancel run"
                 onClick={() => handleCancel(entry.id)}
-                className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-destructive"
+                variant="danger"
+                size="xs"
+                icon={<StopCircle size={12} />}
                 title="Cancel run"
-              >
-                <StopCircle size={12} />
-              </button>
+              />
             )}
           </div>
         );
@@ -212,29 +216,29 @@ export function RunHistoryPanel({ connectionId, onReplayQuery }: RunHistoryPanel
 
       {/* Empty */}
       {state.entries.length === 0 && !state.isLoading && (
-        <div className="px-2 py-2 text-xs text-muted-foreground/60">No history yet</div>
+        <EmptyState title="No history yet" className="items-start px-2 py-2 text-left" />
       )}
 
       {/* Pagination */}
       {state.total > PAGE_SIZE && (
         <div className="flex items-center justify-between px-2 py-1 text-[0.75rem] text-muted-foreground">
-          <button
+          <IconButton
+            aria-label="Previous history page"
             onClick={() => dispatch({ type: "PREV_PAGE" })}
             disabled={state.offset === 0}
-            className="rounded p-0.5 hover:bg-accent disabled:opacity-30"
-          >
-            <ChevronLeft size={10} />
-          </button>
+            size="xs"
+            icon={<ChevronLeft size={10} />}
+          />
           <span>
             {currentPage}/{totalPages}
           </span>
-          <button
+          <IconButton
+            aria-label="Next history page"
             onClick={() => dispatch({ type: "NEXT_PAGE" })}
             disabled={!state.hasMore}
-            className="rounded p-0.5 hover:bg-accent disabled:opacity-30"
-          >
-            <ChevronRight size={10} />
-          </button>
+            size="xs"
+            icon={<ChevronRight size={10} />}
+          />
         </div>
       )}
 

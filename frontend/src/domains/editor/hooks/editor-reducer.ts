@@ -45,7 +45,12 @@ export function createTab(connectionId: string | null = null): Tab {
   };
 }
 
-export function createSchemaTab(schemaName: string, tableName: string, connectionId: string): Tab {
+export function createSchemaTab(
+  schemaName: string,
+  tableName: string,
+  connectionId: string,
+  objectId?: string,
+): Tab {
   const id = `tab-${tabCounter++}`;
   return {
     id,
@@ -63,7 +68,7 @@ export function createSchemaTab(schemaName: string, tableName: string, connectio
     runningQueryId: null,
     backendPid: null,
     runningDbType: null,
-    schemaView: { schemaName, tableName, activeSection: "schema" },
+    schemaView: { schemaName, tableName, objectId, activeSection: "schema" },
     variables: {},
     writeMode: false,
     apiEnabled: false,
@@ -244,6 +249,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const tab = state.tabs.find((item) => item.id === action.tabId);
       if (!tab || tab.apiEnabled === action.enabled) return state;
       return updateTab(state, action.tabId, { apiEnabled: action.enabled });
+    }
+
+    case "SET_SCHEMA_OBJECT_ID": {
+      const tab = state.tabs.find((item) => item.id === action.tabId);
+      if (!tab?.schemaView || tab.schemaView.objectId === action.objectId) return state;
+      return updateTab(state, action.tabId, {
+        schemaView: { ...tab.schemaView, objectId: action.objectId },
+      });
     }
 
     case "SET_SCHEMA_SECTION": {

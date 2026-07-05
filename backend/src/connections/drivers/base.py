@@ -16,6 +16,8 @@ class ConnectionConfig:
     ssl_ca: str | None = None
     ssl_cert: str | None = None
     ssl_key: str | None = None
+    config: dict[str, Any] | None = None
+    credentials: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +158,8 @@ class QueryResult:
     rows: list[list[Any]]
     row_count: int
     execution_time_ms: float
+    result_shape: str = "tabular"
+    data: dict[str, Any] | list[Any] | str | int | float | bool | None = None
 
 
 class DatabaseDriver(Protocol):

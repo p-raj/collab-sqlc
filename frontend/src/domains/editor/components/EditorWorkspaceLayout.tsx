@@ -110,12 +110,12 @@ function EditorWorkspaceContent() {
         handleReplayQuery(sql, selectedConnectionId);
     }, [handleReplayQuery, selectedConnectionId]);
 
-    const handleSidePanelOpenSchemaTab = useCallback((schemaName: string, tableName: string) => {
-        handleOpenSchemaTab(schemaName, tableName, selectedConnectionId);
+    const handleSidePanelOpenSchemaTab = useCallback((schemaName: string, tableName: string, objectId?: string) => {
+        handleOpenSchemaTab(schemaName, tableName, objectId, selectedConnectionId);
     }, [handleOpenSchemaTab, selectedConnectionId]);
 
-    const handleSidePanelGenerateSelect = useCallback((schemaName: string, tableName: string) => {
-        handleGenerateSelect(schemaName, tableName, selectedConnectionId);
+    const handleSidePanelGenerateSelect = useCallback((schemaName: string, tableName: string, objectId?: string) => {
+        void handleGenerateSelect(schemaName, tableName, objectId, selectedConnectionId);
     }, [handleGenerateSelect, selectedConnectionId]);
 
     const shortcuts = useMemo<ShortcutDef[]>(

@@ -25,13 +25,40 @@ export interface SchemaResponse {
   cached: boolean;
 }
 
+export type EngineKind = "sql" | "redis" | "dynamodb";
+
+export interface PreviewOperation {
+  label: string;
+  language: "sql" | "partiql" | "redis-command" | string;
+  text: string;
+  write_mode_required: boolean;
+}
+
+export interface CatalogObject {
+  id: string;
+  kind: "table" | "key" | string;
+  namespace: string;
+  name: string;
+  display_name: string;
+  data_type: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface CatalogObjectsResponse {
+  connection_id: string;
+  engine_kind: EngineKind;
+  objects: CatalogObject[];
+  cached: boolean;
+  truncated: boolean;
+}
+
 /** Grouped by schema name for tree rendering. */
 export interface SchemaGroup {
   name: string;
   tables: TableInfo[];
 }
 
-export type TableExplorerTabId = "schema" | "relationships" | "metadata" | "erd";
+export type TableExplorerTabId = string;
 
 export interface RelationshipColumnInfo {
   source_column: string;
@@ -126,5 +153,27 @@ export interface TableDetailResponse {
   relationships: TableRelationshipsInfo;
   metadata: TableMetadataInfo;
   erd: TableErdInfo;
+  cached: boolean;
+}
+
+export interface ObjectSection {
+  id: string;
+  title: string;
+  kind: string;
+  description: string | null;
+  columns: ColumnInfo[];
+  indexes: TableIndexInfo[];
+  properties: TableMetadataPropertyInfo[];
+  relationships: TableRelationshipsInfo | null;
+  erd: TableErdInfo | null;
+  snippets: PreviewOperation[];
+}
+
+export interface ObjectDetailResponse {
+  connection_id: string;
+  engine_kind: EngineKind;
+  object: CatalogObject;
+  sections: ObjectSection[];
+  preview_operation: PreviewOperation;
   cached: boolean;
 }

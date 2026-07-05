@@ -6,12 +6,15 @@ import {
   Key,
   RefreshCw,
   ChevronRight,
-  Loader2,
-  AlertCircle,
   Play,
 } from "lucide-react";
+import { Badge } from "@/shared/components/ui/Badge";
+import { EmptyState, ErrorState, LoadingState } from "@/shared/components/ui/DataState";
+import { IconButton } from "@/shared/components/ui/IconButton";
+import { Input } from "@/shared/components/ui/Input";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
 import { useSchemaStore } from "../hooks/use-schema-store";
-import type { ColumnInfo, SchemaGroup, TableInfo } from "../types";
+import type { CatalogObject, ColumnInfo, SchemaGroup, TableInfo } from "../types";
 
 // ── State ──────────────────────────────────────────────────
 
@@ -85,8 +88,8 @@ function ColumnRow({ column }: { column: ColumnInfo }) {
 
 interface SchemaTreeProps {
   connectionId: string | null;
-  onSelectTable?: (schemaName: string, tableName: string) => void;
-  onGenerateSelect?: (schemaName: string, tableName: string) => void;
+  onSelectTable?: (schemaName: string, tableName: string, objectId?: string) => void;
+  onGenerateSelect?: (schemaName: string, tableName: string, objectId?: string) => void;
 }
 
 function TableRow({
@@ -96,15 +99,19 @@ function TableRow({
   onToggle,
   onSelectTable,
   onGenerateSelect,
+  object,
 }: {
   table: TableInfo;
   schemaName: string;
   isExpanded: boolean;
   onToggle: () => void;
-  onSelectTable?: (schemaName: string, tableName: string) => void;
-  onGenerateSelect?: (schemaName: string, tableName: string) => void;
+  onSelectTable?: (schemaName: string, tableName: string, objectId?: string) => void;
+  onGenerateSelect?: (schemaName: string, tableName: string, objectId?: string) => void;
+  object: CatalogObject | null;
 }) {
   const tableKey = `${schemaName}.${table.table_name}`;
+  const objectLabel = object?.kind === "key" ? "key" : "table";
+  const previewLabel = object?.kind === "key" ? "Preview value" : "Preview";
 
   return (
     <div>
@@ -112,34 +119,44 @@ function TableRow({
         className="group flex w-full items-center gap-1.5 py-1 pl-6 pr-2 text-xs hover:bg-accent/50"
         title={table.comment ?? tableKey}
       >
-        <button onClick={onToggle} className="shrink-0 p-0.5">
-          <ChevronRight
-            size={10}
-            className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
-          />
-        </button>
-        <button
-          onClick={() => onSelectTable?.(schemaName, table.table_name)}
-          className="flex min-w-0 flex-1 items-center gap-1.5"
+        <IconButton
+          aria-label={isExpanded ? `Collapse ${table.table_name}` : `Expand ${table.table_name}`}
+          onClick={onToggle}
+          size="xs"
+          icon={
+            <ChevronRight
+              size={10}
+              className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
+            />
+          }
+          className="h-4 w-4"
+        />
+        <ObjectListItem
+          onClick={() => onSelectTable?.(schemaName, table.table_name, object?.id)}
+          indicator={<Table2 size={11} className="shrink-0 text-muted-foreground/70" />}
+          className="p-0 hover:bg-transparent"
         >
-          <Table2 size={11} className="shrink-0 text-muted-foreground/70" />
-          <span className="truncate">{table.table_name}</span>
-        </button>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{table.table_name}</span>
+            {object?.data_type && <Badge className="text-[10px]">{object.data_type}</Badge>}
+          </span>
+        </ObjectListItem>
         {table.row_count != null && (
           <span className="shrink-0 text-[0.75rem] text-muted-foreground/50">
             {table.row_count.toLocaleString()}
           </span>
         )}
-        <button
+        <IconButton
+          aria-label={`${previewLabel} ${objectLabel}`}
           onClick={(e) => {
             e.stopPropagation();
-            onGenerateSelect?.(schemaName, table.table_name);
+            onGenerateSelect?.(schemaName, table.table_name, object?.id);
           }}
+          size="xs"
+          icon={<Play size={10} />}
           className="shrink-0 rounded p-0.5 text-muted-foreground/50 opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100"
-          title={`SELECT * FROM ${schemaName}.${table.table_name}`}
-        >
-          <Play size={10} />
-        </button>
+          title={`${previewLabel} ${objectLabel}`}
+        />
       </div>
       {isExpanded && table.columns.map((col) => <ColumnRow key={col.name} column={col} />)}
     </div>
@@ -154,31 +171,39 @@ function SchemaGroupRow({
   onToggleTable,
   onSelectTable,
   onGenerateSelect,
+  getObjectForTable,
 }: {
   group: SchemaGroup;
   isExpanded: boolean;
   expandedTables: Set<string>;
   onToggleSchema: () => void;
   onToggleTable: (key: string) => void;
-  onSelectTable?: (schemaName: string, tableName: string) => void;
-  onGenerateSelect?: (schemaName: string, tableName: string) => void;
+  onSelectTable?: (schemaName: string, tableName: string, objectId?: string) => void;
+  onGenerateSelect?: (schemaName: string, tableName: string, objectId?: string) => void;
+  getObjectForTable: (schemaName: string, tableName: string) => CatalogObject | null;
 }) {
   return (
     <div>
-      <button
+      <ObjectListItem
         onClick={onToggleSchema}
-        className="flex w-full items-center gap-1.5 px-2 py-1 text-xs font-medium hover:bg-accent/50"
+        indicator={
+          <>
+            <ChevronRight
+              size={10}
+              className={`shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+            />
+            <Database size={11} className="shrink-0 text-muted-foreground/70" />
+          </>
+        }
+        meta={
+          <span className="ml-auto shrink-0 text-[0.75rem] text-muted-foreground/50">
+            {group.tables.length}
+          </span>
+        }
+        className="w-full font-medium"
       >
-        <ChevronRight
-          size={10}
-          className={`shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-        />
-        <Database size={11} className="shrink-0 text-muted-foreground/70" />
-        <span className="truncate">{group.name}</span>
-        <span className="ml-auto shrink-0 text-[0.75rem] text-muted-foreground/50">
-          {group.tables.length}
-        </span>
-      </button>
+        {group.name}
+      </ObjectListItem>
       {isExpanded &&
         group.tables.map((t) => {
           const key = `${group.name}.${t.table_name}`;
@@ -191,6 +216,7 @@ function SchemaGroupRow({
               onToggle={() => onToggleTable(key)}
               onSelectTable={onSelectTable}
               onGenerateSelect={onGenerateSelect}
+              object={getObjectForTable(group.name, t.table_name)}
             />
           );
         })}
@@ -201,7 +227,8 @@ function SchemaGroupRow({
 // ── Main Component ─────────────────────────────────────────
 
 export function SchemaTree({ connectionId, onSelectTable, onGenerateSelect }: SchemaTreeProps) {
-  const { fetchSchema, getGroups, loadingIds, error } = useSchemaStore();
+  const { loadSchemaExplorer, getGroups, getObjectForTable, loadingIds, error } =
+    useSchemaStore();
 
   const [state, dispatch] = useReducer(treeReducer, {
     expandedSchemas: new Set<string>(),
@@ -213,73 +240,64 @@ export function SchemaTree({ connectionId, onSelectTable, onGenerateSelect }: Sc
   useEffect(() => {
     if (connectionId) {
       dispatch({ type: "RESET" });
-      fetchSchema(connectionId);
+      void loadSchemaExplorer(connectionId);
     }
-  }, [connectionId, fetchSchema]);
+  }, [connectionId, loadSchemaExplorer]);
 
   const handleRefresh = useCallback(() => {
     if (connectionId) {
-      fetchSchema(connectionId, true);
+      void loadSchemaExplorer(connectionId, true);
     }
-  }, [connectionId, fetchSchema]);
+  }, [connectionId, loadSchemaExplorer]);
 
   if (!connectionId) {
     return (
-      <div className="px-2 py-3 text-xs text-muted-foreground/60">
-        Select a connection to browse schema
-      </div>
+      <EmptyState
+        title="Select a connection"
+        description="Choose a connection to browse schema."
+        className="items-start px-2 py-3 text-left"
+      />
     );
   }
 
   const isLoading = loadingIds.has(connectionId);
   const groups = getGroups(connectionId);
   const filtered = filterGroups(groups, state.filter);
+  const resolveObject = (schemaName: string, tableName: string) =>
+    getObjectForTable(connectionId, schemaName, tableName);
 
   return (
     <div className="flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between px-2 py-1">
         <span className="text-xs font-medium text-muted-foreground">Schema</span>
-        <button
+        <IconButton
+          aria-label="Refresh schema"
           onClick={handleRefresh}
           disabled={isLoading}
-          className="rounded p-0.5 text-muted-foreground hover:bg-accent disabled:opacity-50"
+          size="xs"
+          icon={<RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />}
           title="Refresh schema"
-        >
-          <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
-        </button>
+        />
       </div>
 
-      {/* Filter input */}
       {groups.length > 0 && (
         <div className="px-2 pb-1">
-          <input
+          <Input
             type="text"
             placeholder="Filter tables..."
             value={state.filter}
             onChange={(e) => dispatch({ type: "SET_FILTER", filter: e.target.value })}
-            className="h-6 w-full rounded border border-input bg-transparent px-2 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+            size="xs"
           />
         </div>
       )}
 
-      {/* Loading */}
       {isLoading && groups.length === 0 && (
-        <div className="flex items-center gap-1.5 px-2 py-3">
-          <Loader2 size={12} className="animate-spin text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Loading schema...</span>
-        </div>
+        <LoadingState label="Loading schema" showLabel className="justify-start px-2 py-3" />
       )}
 
-      {/* Error */}
-      {error && (
-        <div className="flex items-center gap-1.5 px-2 py-2">
-          <AlertCircle size={12} className="shrink-0 text-destructive" />
-          <span className="text-xs text-destructive">{error}</span>
-        </div>
-      )}
+      {error && <ErrorState message={error} className="px-2 py-2" />}
 
-      {/* Tree */}
       {filtered.length > 0 && (
         <div className="overflow-y-auto">
           {filtered.map((g) => (
@@ -292,19 +310,26 @@ export function SchemaTree({ connectionId, onSelectTable, onGenerateSelect }: Sc
               onToggleTable={(key) => dispatch({ type: "TOGGLE_TABLE", key })}
               onSelectTable={onSelectTable}
               onGenerateSelect={onGenerateSelect}
+              getObjectForTable={resolveObject}
             />
           ))}
         </div>
       )}
 
-      {/* Empty after filter */}
       {!isLoading && groups.length > 0 && filtered.length === 0 && state.filter && (
-        <div className="px-2 py-2 text-xs text-muted-foreground/60">No matching tables</div>
+        <EmptyState
+          title="No matching tables"
+          description="Change filter text to search again."
+          className="items-start px-2 py-2 text-left"
+        />
       )}
 
-      {/* Empty schema */}
       {!isLoading && !error && groups.length === 0 && (
-        <div className="px-2 py-2 text-xs text-muted-foreground/60">No tables found</div>
+        <EmptyState
+          title="No tables found"
+          description="Refresh schema if this connection changed."
+          className="items-start px-2 py-2 text-left"
+        />
       )}
     </div>
   );

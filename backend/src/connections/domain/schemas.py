@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import Field, model_validator
 
-from src.connections.engine_registry import SUPPORTED_DATABASE_ENGINE_PATTERN
+from src.connections.engine_registry import (
+    SUPPORTED_DATABASE_ENGINE_PATTERN,
+    get_database_engine,
+)
 from src.shared.domain.schemas import ApiSchema
 
 if TYPE_CHECKING:
@@ -15,11 +18,13 @@ if TYPE_CHECKING:
 class ConnectionCreateRequest(ApiSchema):
     name: str = Field(min_length=1, max_length=255)
     db_type: str = Field(pattern=SUPPORTED_DATABASE_ENGINE_PATTERN)
-    host: str = Field(min_length=1, max_length=255)
+    host: str = Field(default="", max_length=255)
     port: int = Field(gt=0, le=65535)
-    database: str = Field(min_length=1, max_length=255)
-    username: str = Field(min_length=1, max_length=255)
-    password: str = Field(min_length=1)
+    database: str = Field(default="", max_length=255)
+    username: str = Field(default="", max_length=255)
+    password: str = ""
+    config: dict[str, Any] | None = None
+    credentials: dict[str, Any] | None = None
 
     ssl_enabled: bool = False
     ssl_ca: str | None = None
@@ -39,7 +44,19 @@ class ConnectionCreateRequest(ApiSchema):
     dbml_context: dict[str, Any] | None = None
 
     @model_validator(mode="after")
-    def validate_ssl_certificate_pair(self) -> "ConnectionCreateRequest":
+    def validate_connection_shape(self) -> "ConnectionCreateRequest":
+        engine = get_database_engine(self.db_type)
+        if engine.engine_kind == "sql":
+            if not self.host or not self.database or not self.username or not self.password:
+                raise ValueError("SQL connections require host, database, username, and password")
+        if engine.engine_kind == "redis" and not self.host:
+            raise ValueError("Redis connections require host")
+        if engine.engine_kind == "dynamodb":
+            region = (self.config or {}).get("region") or self.database
+            access_key = (self.credentials or {}).get("access_key_id") or self.username
+            secret_key = (self.credentials or {}).get("secret_access_key") or self.password
+            if not region or not access_key or not secret_key:
+                raise ValueError("DynamoDB connections require region, access key ID, and secret key")
         if not self.ssl_enabled:
             return self
         if bool(self.ssl_cert) != bool(self.ssl_key):
@@ -51,11 +68,13 @@ class ConnectionCreateRequest(ApiSchema):
 
 class ConnectionUpdateRequest(ApiSchema):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    host: str | None = Field(default=None, min_length=1, max_length=255)
+    host: str | None = Field(default=None, max_length=255)
     port: int | None = Field(default=None, gt=0, le=65535)
-    database: str | None = Field(default=None, min_length=1, max_length=255)
-    username: str | None = Field(default=None, min_length=1, max_length=255)
-    password: str | None = Field(default=None, min_length=1)
+    database: str | None = Field(default=None, max_length=255)
+    username: str | None = Field(default=None, max_length=255)
+    password: str | None = None
+    config: dict[str, Any] | None = None
+    credentials: dict[str, Any] | None = None
 
     ssl_enabled: bool | None = None
     ssl_ca: str | None = None
@@ -75,7 +94,7 @@ class ConnectionUpdateRequest(ApiSchema):
     dbml_context: dict[str, Any] | None = None
 
     @model_validator(mode="after")
-    def validate_ssl_certificate_pair(self) -> "ConnectionUpdateRequest":
+    def validate_connection_shape(self) -> "ConnectionUpdateRequest":
         if self.ssl_enabled is False:
             return self
         if bool(self.ssl_cert) != bool(self.ssl_key):
@@ -91,6 +110,7 @@ class ConnectionResponse(ApiSchema):
     port: int
     database: str
     username: str
+    config: dict[str, Any] | None = None
     ssl_enabled: bool
     has_ssl_certificates: bool
     has_ssl_ca: bool
@@ -118,6 +138,7 @@ class ConnectionResponse(ApiSchema):
             port=connection.port,
             database=connection.database,
             username=connection.username,
+            config=connection.config,
             ssl_enabled=connection.ssl_enabled,
             has_ssl_certificates=bool(
                 connection.ssl_ca or connection.ssl_cert or connection.ssl_key
@@ -145,18 +166,32 @@ class ConnectionListResponse(ApiSchema):
 
 class TestConnectionRequest(ApiSchema):
     db_type: str = Field(pattern=SUPPORTED_DATABASE_ENGINE_PATTERN)
-    host: str
+    host: str = ""
     port: int = Field(gt=0, le=65535)
-    database: str
-    username: str
-    password: str
+    database: str = ""
+    username: str = ""
+    password: str = ""
+    config: dict[str, Any] | None = None
+    credentials: dict[str, Any] | None = None
     ssl_enabled: bool = False
     ssl_ca: str | None = None
     ssl_cert: str | None = None
     ssl_key: str | None = None
 
     @model_validator(mode="after")
-    def validate_ssl_certificate_pair(self) -> "TestConnectionRequest":
+    def validate_connection_shape(self) -> "TestConnectionRequest":
+        engine = get_database_engine(self.db_type)
+        if engine.engine_kind == "sql":
+            if not self.host or not self.database or not self.username or not self.password:
+                raise ValueError("SQL connections require host, database, username, and password")
+        if engine.engine_kind == "redis" and not self.host:
+            raise ValueError("Redis connections require host")
+        if engine.engine_kind == "dynamodb":
+            region = (self.config or {}).get("region") or self.database
+            access_key = (self.credentials or {}).get("access_key_id") or self.username
+            secret_key = (self.credentials or {}).get("secret_access_key") or self.password
+            if not region or not access_key or not secret_key:
+                raise ValueError("DynamoDB connections require region, access key ID, and secret key")
         if not self.ssl_enabled:
             return self
         if bool(self.ssl_cert) != bool(self.ssl_key):

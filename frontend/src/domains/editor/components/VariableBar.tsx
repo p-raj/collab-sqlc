@@ -1,4 +1,7 @@
 import { Settings } from "lucide-react";
+import { Button } from "@/shared/components/ui/Button";
+import { Input } from "@/shared/components/ui/Input";
+import { Select } from "@/shared/components/ui/Select";
 import { useEditorContext, extractSmartVariables } from "../hooks/editor-context";
 import type { VariableType } from "../utils/smart-variables";
 
@@ -83,7 +86,7 @@ export function VariableBar({ isConfigOpen, canManageApi, onOpenConfig }: Variab
               <span className="text-[0.65rem] text-muted-foreground/60">{TYPE_LABELS[v.type]}</span>
 
               {v.type === "boolean" ? (
-                <select
+                <Select
                   value={activeTab.variables[v.name] ?? ""}
                   onChange={(e) =>
                     dispatch({
@@ -93,14 +96,15 @@ export function VariableBar({ isConfigOpen, canManageApi, onOpenConfig }: Variab
                       value: e.target.value,
                     })
                   }
-                  className="h-5 border-0 bg-transparent text-xs text-foreground focus:outline-none"
+                  size="xs"
+                  className="h-5 border-0 bg-transparent px-0 text-foreground"
                 >
                   <option value="">—</option>
                   <option value="true">TRUE</option>
                   <option value="false">FALSE</option>
-                </select>
+                </Select>
               ) : (
-                <input
+                <Input
                   type={inputTypeFor(v.type)}
                   value={formatDatetimeValue(activeTab.variables[v.name] ?? "", v.type)}
                   onChange={(e) =>
@@ -113,7 +117,8 @@ export function VariableBar({ isConfigOpen, canManageApi, onOpenConfig }: Variab
                   }
                   placeholder={TYPE_PLACEHOLDER[v.type]}
                   step={v.type === "number" ? "any" : undefined}
-                  className={`border-0 bg-transparent text-xs text-foreground focus:outline-none ${
+                  size="xs"
+                  className={`h-5 border-0 bg-transparent px-0 text-foreground ${
                     v.type === "list" ? "w-40" : v.type === "datetime" ? "w-44" : "w-24"
                   }`}
                 />
@@ -124,15 +129,17 @@ export function VariableBar({ isConfigOpen, canManageApi, onOpenConfig }: Variab
       </div>
 
       {canManageApi && (
-        <button
+        <Button
           type="button"
           onClick={onOpenConfig}
           disabled={!canConfigure}
-          className={`inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-xs transition-colors ${
+          variant="secondary"
+          size="xs"
+          className={
             isConfigOpen
-              ? "border-primary/30 bg-primary/10 text-foreground"
-              : "border-input text-muted-foreground hover:bg-accent hover:text-foreground"
-          } disabled:cursor-not-allowed disabled:opacity-50`}
+              ? "border-primary/30 bg-primary/10 text-foreground hover:bg-primary/10"
+              : ""
+          }
           title={
             canConfigure
               ? "Open query configuration"
@@ -142,7 +149,7 @@ export function VariableBar({ isConfigOpen, canManageApi, onOpenConfig }: Variab
         >
           <Settings size={12} />
           Configure
-        </button>
+        </Button>
       )}
     </div>
   );

@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useConnectionsStore } from "../hooks/use-connections-store";
 import { getDatabaseEngine } from "../engine-registry";
 import { Dialog } from "@/shared/components/Dialog";
+import { Badge } from "@/shared/components/ui/Badge";
+import { Button } from "@/shared/components/ui/Button";
+import { EmptyState, LoadingState } from "@/shared/components/ui/DataState";
+import { IconButton } from "@/shared/components/ui/IconButton";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
 import { ConnectionForm } from "./ConnectionForm";
 import type { Connection } from "../types";
 
@@ -43,34 +48,28 @@ export function ConnectionsPanel() {
   }
 
   const typeBadge = (dbType: Connection["db_type"]) => (
-    <span className="rounded border border-input px-1 py-px text-[0.75rem] leading-none text-muted-foreground">
-      {getDatabaseEngine(dbType).shortLabel}
-    </span>
+    <Badge variant="neutral">{getDatabaseEngine(dbType).shortLabel}</Badge>
   );
 
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between px-2 py-1">
         <span className="text-xs font-medium text-muted-foreground">Connections</span>
-        <button
+        <IconButton
           type="button"
           onClick={openCreate}
           title="Add connection"
-          className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-        >
-          <Plus size={12} />
-        </button>
+          aria-label="Add connection"
+          icon={<Plus size={12} />}
+        />
       </div>
 
       {isLoading && connections.length === 0 && (
-        <div className="flex items-center gap-1.5 px-2 py-3">
-          <Loader2 size={12} className="animate-spin text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Loading...</span>
-        </div>
+        <LoadingState label="Loading connections" showLabel className="px-2 py-3" />
       )}
 
       {!isLoading && connections.length === 0 && (
-        <div className="px-2 py-2 text-xs text-muted-foreground/60">No connections yet</div>
+        <EmptyState title="No connections yet" className="px-2 py-3" />
       )}
 
       {connections.map((conn) => (
@@ -78,36 +77,38 @@ export function ConnectionsPanel() {
           key={conn.id}
           className={`group flex items-center ${activeConnectionId === conn.id ? "bg-accent" : ""}`}
         >
-          <button
-            type="button"
+          <ObjectListItem
             onClick={() => setActive(conn.id)}
-            className="flex flex-1 items-center gap-1.5 px-2 py-1 text-left text-xs hover:bg-accent/50"
+            active={activeConnectionId === conn.id}
+            indicator={
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  activeConnectionId === conn.id ? "bg-foreground" : "bg-transparent"
+                }`}
+              />
+            }
+            meta={typeBadge(conn.db_type)}
           >
-            <span
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                activeConnectionId === conn.id ? "bg-foreground" : "bg-transparent"
-              }`}
-            />
-            <span className="flex-1 truncate">{conn.name}</span>
-            {typeBadge(conn.db_type)}
-          </button>
+            {conn.name}
+          </ObjectListItem>
           <div className="mr-1 flex shrink-0 items-center">
-            <button
+            <IconButton
               type="button"
               onClick={() => openEdit(conn)}
-              className="rounded p-0.5 text-muted-foreground/50 opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100"
+              className="opacity-0 group-hover:opacity-100"
               title={`Edit ${conn.name}`}
-            >
-              <Pencil size={10} />
-            </button>
-            <button
+              aria-label={`Edit ${conn.name}`}
+              icon={<Pencil size={10} />}
+            />
+            <IconButton
               type="button"
               onClick={() => setDeleteTarget(conn)}
-              className="rounded p-0.5 text-muted-foreground/50 opacity-0 hover:bg-accent hover:text-destructive group-hover:opacity-100"
+              className="opacity-0 group-hover:opacity-100"
+              variant="danger"
               title={`Delete ${conn.name}`}
-            >
-              <Trash2 size={10} />
-            </button>
+              aria-label={`Delete ${conn.name}`}
+              icon={<Trash2 size={10} />}
+            />
           </div>
         </div>
       ))}
@@ -132,18 +133,19 @@ export function ConnectionsPanel() {
               Delete <strong>{deleteTarget.name}</strong>? This cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
-              <button
+              <Button
+                type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="h-7 rounded border border-input px-3 text-xs text-muted-foreground hover:bg-accent"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                type="button"
                 onClick={confirmDelete}
-                className="h-7 rounded bg-foreground px-3 text-xs text-background hover:bg-foreground/90"
+                variant="danger"
               >
                 Delete
-              </button>
+              </Button>
             </div>
           </div>
         </Dialog>

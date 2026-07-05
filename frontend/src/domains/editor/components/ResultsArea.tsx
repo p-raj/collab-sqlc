@@ -1,7 +1,15 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { Loader2, CheckCircle2, XCircle, Copy, Download, Search, ListTree } from "lucide-react";
+import { CheckCircle2, XCircle, Copy, Download, Search, ListTree } from "lucide-react";
 import MonacoEditor from "@monaco-editor/react";
 import { getDatabaseEngine } from "@/domains/connections/engine-registry";
+import { Button } from "@/shared/components/ui/Button";
+import { CodeBlock, InlineCode } from "@/shared/components/ui/CodeBlock";
+import { EmptyState, ErrorState, LoadingState } from "@/shared/components/ui/DataState";
+import { Input } from "@/shared/components/ui/Input";
+import { StatusIndicator } from "@/shared/components/ui/StatusIndicator";
+import { TabButton, TabsRoot } from "@/shared/components/ui/Tabs";
+import { Toolbar } from "@/shared/components/ui/Toolbar";
+import { ToolbarGroup } from "@/shared/components/ui/ToolbarGroup";
 import { useTheme } from "@/shared/contexts/theme-context";
 import { useEditorContext } from "../hooks/editor-context";
 import { ResultsTable } from "./ResultsTable";
@@ -11,6 +19,7 @@ import { PlanGrid } from "./explain/PlanGrid";
 import { PlanStats } from "./explain/PlanStats";
 import { parsePlan } from "../explain/plan-parser";
 import type { Plan } from "../explain/types";
+import type { QueryResult } from "../types";
 import {
   resultsToCsv,
   resultsToJson,
@@ -18,7 +27,16 @@ import {
   downloadFile,
 } from "../services/export-utils";
 
-type ResultsTab = "sql" | "data" | "export" | "tree" | "plan" | "grid" | "stats" | "raw";
+type ResultsTab =
+  | "sql"
+  | "data"
+  | "details"
+  | "export"
+  | "tree"
+  | "plan"
+  | "grid"
+  | "stats"
+  | "raw";
 
 export function ResultsArea() {
   const { activeTab } = useEditorContext();
@@ -29,12 +47,15 @@ export function ResultsArea() {
   const explainOutputKind = engine.explain.outputKind;
 
   const result = activeTab?.result ?? null;
+  const resultShape = result?.result_shape ?? "tabular";
   const error = activeTab?.error ?? null;
   const explainPlan = activeTab?.explainPlan ?? null;
   const hasResult = result !== null;
   const hasError = error !== null;
   const hasExplain = explainPlan !== null;
   const isExecuting = activeTab?.isExecuting ?? false;
+  const backendPid = activeTab?.backendPid ?? null;
+  const hasResultDetails = hasResult && resultShape !== "tabular";
 
   const filteredResult = useMemo(() => {
     if (!result || !searchQuery.trim()) return result;
@@ -89,6 +110,9 @@ export function ResultsArea() {
     () => [
       { id: "sql", label: "SQL" },
       { id: "data", label: "Data" },
+      ...(hasResultDetails
+        ? [{ id: "details" as const, label: getResultDetailsTabLabel(resultShape) }]
+        : []),
       ...(hasExplain && explainOutputKind === "json"
         ? [
             { id: "tree" as const, label: "Tree" },
@@ -100,7 +124,7 @@ export function ResultsArea() {
       ...(hasExplain ? [{ id: "raw" as const, label: "Raw" }] : []),
       { id: "export", label: "Export" },
     ],
-    [explainOutputKind, hasExplain],
+    [explainOutputKind, hasExplain, hasResultDetails, resultShape],
   );
 
   // Auto-select the engine's preferred EXPLAIN tab when a new plan arrives.
@@ -122,52 +146,39 @@ export function ResultsArea() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
-      {/* Status bar + tabs */}
-      <div className="flex h-8 flex-shrink-0 items-center border-b px-3">
-        {/* Status badge */}
-        <div className="flex items-center gap-1.5 pr-4">
-          {isExecuting && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
+      <Toolbar>
+        <ToolbarGroup className="pr-4">
+          {isExecuting && (
+            <StatusIndicator
+              label={backendPid !== null ? `PID ${backendPid}` : "Running"}
+              loading
+            />
+          )}
           {!isExecuting && hasResult && (
-            <>
-              <CheckCircle2 size={12} className="text-foreground" />
-              <span className="text-xs font-medium text-foreground">Success</span>
-            </>
+            <StatusIndicator label="Success" icon={CheckCircle2} tone="success" />
           )}
           {!isExecuting && hasExplain && !hasResult && !hasError && (
-            <>
-              <ListTree size={12} className="text-foreground" />
-              <span className="text-xs font-medium text-foreground">Plan</span>
-            </>
+            <StatusIndicator label="Plan" icon={ListTree} tone="success" />
           )}
           {!isExecuting && hasError && !hasResult && (
-            <>
-              <XCircle size={12} className="text-destructive" />
-              <span className="text-xs font-medium text-destructive">Error</span>
-            </>
+            <StatusIndicator label="Error" icon={XCircle} tone="danger" />
           )}
-        </div>
+        </ToolbarGroup>
 
-        {/* Tab strip */}
-        <div className="flex items-center gap-3">
+        <TabsRoot>
           {tabs.map((tab) => (
-            <button
+            <TabButton
               key={tab.id}
               onClick={() => setActiveResultsTab(tab.id)}
-              className={`h-8 text-xs transition-colors ${
-                activeResultsTab === tab.id
-                  ? "border-b-2 border-foreground font-medium text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              active={activeResultsTab === tab.id}
             >
               {tab.label}
-            </button>
+            </TabButton>
           ))}
-        </div>
+        </TabsRoot>
 
-        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Row count + timing */}
         {hasResult && result && (
           <span className="text-xs text-muted-foreground">
             {result.rows.length} row{result.rows.length !== 1 ? "s" : ""}
@@ -176,80 +187,64 @@ export function ResultsArea() {
           </span>
         )}
 
-        {/* Search input for data tab */}
         {activeResultsTab === "data" && hasResult && (
           <div className="relative ml-2">
             <Search
               size={12}
               className="absolute left-1.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
-            <input
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search results..."
-              className="h-6 w-48 rounded border border-input bg-transparent pl-6 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-48 pl-6"
+              size="xs"
+              aria-label="Search results"
             />
           </div>
         )}
-      </div>
+      </Toolbar>
 
       {/* Content area */}
       <div className="flex-1 overflow-hidden">
-        {isExecuting && (
-          <div className="flex h-full items-center justify-center">
-            <Loader2 size={20} className="animate-spin text-muted-foreground" />
-          </div>
-        )}
+        {isExecuting && <LoadingState label="Running query" />}
 
-        {!isExecuting && hasError && !hasResult && (
-          <div className="p-3">
-            <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </div>
-          </div>
-        )}
+        {!isExecuting && hasError && !hasResult && <ErrorState message={error} />}
 
         {!isExecuting && !hasResult && !hasError && !hasExplain && (
-          <div className="flex h-full flex-col items-center justify-center gap-3">
-            <p className="text-sm text-muted-foreground">Run a query to see results (⌘+Enter)</p>
+          <EmptyState title="Run a query to see results (⌘+Enter)">
             <div className="flex flex-col gap-1.5 text-[11px] text-muted-foreground/60">
               <p>
-                Tip: Use{" "}
-                <code className="rounded bg-muted px-1 font-mono text-[0.75rem]">
-                  {"{name:type}"}
-                </code>{" "}
-                for smart variables
+                Tip: Use <InlineCode>{"{name:type}"}</InlineCode> for smart variables
               </p>
               <div className="flex flex-col gap-0.5 pl-4 font-mono text-[0.7rem]">
                 <span>
-                  <code className="rounded bg-muted px-1">{"{status:text}"}</code> →{" "}
+                  <InlineCode>{"{status:text}"}</InlineCode> →{" "}
                   <span className="text-muted-foreground/40">'active'</span>
                 </span>
                 <span>
-                  <code className="rounded bg-muted px-1">{"{age:number}"}</code> →{" "}
+                  <InlineCode>{"{age:number}"}</InlineCode> →{" "}
                   <span className="text-muted-foreground/40">18</span>
                 </span>
                 <span>
-                  <code className="rounded bg-muted px-1">{"{active:boolean}"}</code> →{" "}
+                  <InlineCode>{"{active:boolean}"}</InlineCode> →{" "}
                   <span className="text-muted-foreground/40">TRUE</span>
                 </span>
                 <span>
-                  <code className="rounded bg-muted px-1">{"{start:date}"}</code> →{" "}
+                  <InlineCode>{"{start:date}"}</InlineCode> →{" "}
                   <span className="text-muted-foreground/40">'2024-01-15'</span>
                 </span>
                 <span>
-                  <code className="rounded bg-muted px-1">{"{ids:list}"}</code> →{" "}
+                  <InlineCode>{"{ids:list}"}</InlineCode> →{" "}
                   <span className="text-muted-foreground/40">1, 2, 3</span>
                 </span>
               </div>
               <p className="mt-0.5">
-                Use{" "}
-                <code className="rounded bg-muted px-1 font-mono text-[0.75rem]">$variable</code>{" "}
-                for direct string interpolation
+                Use <InlineCode>$variable</InlineCode> for direct string interpolation
               </p>
             </div>
-          </div>
+          </EmptyState>
         )}
 
         {!isExecuting &&
@@ -257,11 +252,7 @@ export function ResultsArea() {
           !parsedPlan &&
           planParseError &&
           ["tree", "plan", "grid", "stats"].includes(activeResultsTab) && (
-            <div className="p-3">
-              <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                Failed to parse EXPLAIN output: {planParseError}
-              </div>
-            </div>
+            <ErrorState message={`Failed to parse EXPLAIN output: ${planParseError}`} />
           )}
 
         {!isExecuting && hasExplain && parsedPlan && activeResultsTab === "tree" && (
@@ -342,6 +333,10 @@ export function ResultsArea() {
               </div>
             )}
 
+            {activeResultsTab === "details" && (
+              <ResultDetailsRenderer result={result} resultShape={resultShape} />
+            )}
+
             {activeResultsTab === "export" && (
               <div className="flex flex-col gap-4 p-4">
                 <div className="flex items-start gap-3">
@@ -375,6 +370,47 @@ export function ResultsArea() {
   );
 }
 
+function getResultDetailsTabLabel(resultShape: string): string {
+  if (resultShape === "document") return "Document";
+  if (resultShape === "scalar") return "Value";
+  return "Payload";
+}
+
+function ResultDetailsRenderer({
+  result,
+  resultShape,
+}: {
+  result: QueryResult | null;
+  resultShape: string;
+}) {
+  if (!result) return null;
+  if (resultShape === "scalar") {
+    return (
+      <div className="h-full overflow-auto p-3">
+        <CodeBlock className="whitespace-pre-wrap break-words">
+          {String(result.data ?? result.rows[0]?.[0] ?? "")}
+        </CodeBlock>
+      </div>
+    );
+  }
+  if (resultShape === "document") {
+    return (
+      <div className="h-full overflow-auto p-3">
+        <CodeBlock className="whitespace-pre-wrap break-words">
+          {JSON.stringify(result.data ?? result.rows, null, 2)}
+        </CodeBlock>
+      </div>
+    );
+  }
+  return (
+    <div className="h-full overflow-auto p-3">
+      <CodeBlock className="whitespace-pre-wrap break-words">
+        {JSON.stringify(result.data ?? result.rows, null, 2)}
+      </CodeBlock>
+    </div>
+  );
+}
+
 function ExportButton({
   icon,
   label,
@@ -387,13 +423,8 @@ function ExportButton({
   disabled?: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-2 rounded border border-input px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-    >
-      {icon}
+    <Button onClick={onClick} disabled={disabled} size="md" leftIcon={icon}>
       {label}
-    </button>
+    </Button>
   );
 }

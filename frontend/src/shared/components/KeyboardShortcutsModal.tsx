@@ -1,15 +1,8 @@
 import { Dialog } from "./Dialog";
+import { Kbd } from "./ui/Kbd";
 import { formatShortcutBinding, getShortcutGroups } from "@/shared/keyboard-shortcuts";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-
-function Kbd({ children }: { children: string }) {
-  return (
-    <kbd className="inline-flex h-5 min-w-[20px] items-center justify-center rounded border bg-muted px-1.5 font-mono text-[0.75rem] font-medium text-muted-foreground">
-      {children}
-    </kbd>
-  );
-}
 
 function ShortcutKeys({ keys }: { keys: string }) {
   const parts = keys.split(" + ");

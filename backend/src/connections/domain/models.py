@@ -22,6 +22,8 @@ class ConnectionModel(Base):
     database: Mapped[str] = mapped_column(String(255), nullable=False)
     username: Mapped[str] = mapped_column(String(255), nullable=False)
     password_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    config: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    credentials_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # SSL
     ssl_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -6,7 +6,6 @@ import {
   Trash2,
   Pencil,
   ChevronRight,
-  Loader2,
   Save,
   Globe,
   Star,
@@ -17,6 +16,10 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/domains/auth/hooks/use-auth-store";
 import { Dialog } from "@/shared/components/Dialog";
 import { ConfirmDialog } from "@/shared/components/ConfirmDialog";
+import { EmptyState, LoadingState } from "@/shared/components/ui/DataState";
+import { IconButton } from "@/shared/components/ui/IconButton";
+import { Input } from "@/shared/components/ui/Input";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
 import { VersionHistoryPanel } from "./VersionHistoryPanel";
 import { useSavedQueriesStore } from "../hooks/use-saved-queries-store";
 import type { QueryFolder, SavedQuery } from "../types";
@@ -95,7 +98,11 @@ export function SavedQueriesPanel({ onOpenQuery, onSaveCurrentQuery }: SavedQuer
   } = useSavedQueriesStore();
   const currentUserId = useAuthStore((s) => s.user?.id);
   const [viewingVersionsForQuery, setViewingVersionsForQuery] = useState<SavedQuery | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ type: "query" | "folder"; id: string; name: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{
+    type: "query" | "folder";
+    id: string;
+    name: string;
+  } | null>(null);
 
   const [state, dispatch] = useReducer(panelReducer, {
     expandedFolders: new Set<string>(),
@@ -171,10 +178,7 @@ export function SavedQueriesPanel({ onOpenQuery, onSaveCurrentQuery }: SavedQuer
 
   if (isLoading && folders.length === 0 && queries.length === 0) {
     return (
-      <div className="flex items-center gap-1.5 px-2 py-3">
-        <Loader2 size={12} className="animate-spin text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">Loading...</span>
-      </div>
+      <LoadingState label="Loading saved queries" showLabel className="justify-start px-2 py-3" />
     );
   }
 
@@ -185,28 +189,28 @@ export function SavedQueriesPanel({ onOpenQuery, onSaveCurrentQuery }: SavedQuer
         <span className="text-xs font-medium text-muted-foreground">Saved Queries</span>
         <div className="flex gap-0.5">
           {onSaveCurrentQuery && (
-            <button
+            <IconButton
+              aria-label="Save current query"
               onClick={onSaveCurrentQuery}
-              className="rounded p-0.5 text-muted-foreground hover:bg-accent"
+              size="xs"
+              icon={<Save size={12} />}
               title="Save current query"
-            >
-              <Save size={12} />
-            </button>
+            />
           )}
-          <button
+          <IconButton
+            aria-label="New folder"
             onClick={() => dispatch({ type: "START_CREATE_FOLDER" })}
-            className="rounded p-0.5 text-muted-foreground hover:bg-accent"
+            size="xs"
+            icon={<Plus size={12} />}
             title="New folder"
-          >
-            <Plus size={12} />
-          </button>
+          />
         </div>
       </div>
 
       {/* New folder input */}
       {state.creatingFolder && (
         <div className="px-2 pb-1">
-          <input
+          <Input
             ref={inputRef}
             type="text"
             placeholder="Folder name..."
@@ -219,7 +223,7 @@ export function SavedQueriesPanel({ onOpenQuery, onSaveCurrentQuery }: SavedQuer
             onBlur={() => {
               if (!state.newFolderName.trim()) dispatch({ type: "CANCEL_CREATE_FOLDER" });
             }}
-            className="h-6 w-full rounded border border-input bg-transparent px-2 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+            size="xs"
           />
         </div>
       )}
@@ -228,7 +232,7 @@ export function SavedQueriesPanel({ onOpenQuery, onSaveCurrentQuery }: SavedQuer
       {favoriteQueries.length > 0 && (
         <div className="mb-1">
           <div className="flex items-center gap-1 px-2 py-0.5">
-            <Star size={10} className="text-yellow-500" />
+            <Star size={10} className="text-warning" />
             <span className="text-[0.75rem] font-medium text-muted-foreground">Favorites</span>
           </div>
           {favoriteQueries.map((q) => (
@@ -251,7 +255,7 @@ export function SavedQueriesPanel({ onOpenQuery, onSaveCurrentQuery }: SavedQuer
       {sharedWithMe.length > 0 && (
         <div className="mb-1">
           <div className="flex items-center gap-1 px-2 py-0.5">
-            <Globe size={10} className="text-blue-500" />
+            <Globe size={10} className="text-info" />
             <span className="text-[0.75rem] font-medium text-muted-foreground">Shared with me</span>
           </div>
           {sharedWithMe.map((q) => (
@@ -283,7 +287,9 @@ export function SavedQueriesPanel({ onOpenQuery, onSaveCurrentQuery }: SavedQuer
           renameName={state.renameFolderName}
           onToggle={() => dispatch({ type: "TOGGLE_FOLDER", id: folder.id })}
           onOpenQuery={onOpenQuery}
-          onDeleteFolder={() => setConfirmDelete({ type: "folder", id: folder.id, name: folder.name })}
+          onDeleteFolder={() =>
+            setConfirmDelete({ type: "folder", id: folder.id, name: folder.name })
+          }
           onToggleShare={() => toggleFolderShare(folder.id)}
           onDeleteQuery={(id) => {
             const q = queries.find((query) => query.id === id);
@@ -318,7 +324,7 @@ export function SavedQueriesPanel({ onOpenQuery, onSaveCurrentQuery }: SavedQuer
 
       {/* Empty */}
       {folders.length === 0 && queries.length === 0 && !isLoading && (
-        <div className="px-2 py-2 text-xs text-muted-foreground/60">No saved queries yet</div>
+        <EmptyState title="No saved queries yet" className="items-start px-2 py-2 text-left" />
       )}
 
       {/* Version History Dialog */}
@@ -412,17 +418,25 @@ function FolderRow({
   return (
     <div>
       <div className="group flex items-center">
-        <button
+        <ObjectListItem
           onClick={onToggle}
-          className="flex flex-1 items-center gap-1.5 px-2 py-1 text-xs hover:bg-accent/50"
+          indicator={
+            <>
+              <ChevronRight
+                size={10}
+                className={`shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+              />
+              <FolderOpen size={11} className="shrink-0 text-muted-foreground/70" />
+            </>
+          }
+          meta={
+            <span className="ml-auto shrink-0 text-[0.75rem] text-muted-foreground/50">
+              {queries.length}
+            </span>
+          }
         >
-          <ChevronRight
-            size={10}
-            className={`shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-          />
-          <FolderOpen size={11} className="shrink-0 text-muted-foreground/70" />
           {isRenaming ? (
-            <input
+            <Input
               ref={renameInputRef}
               type="text"
               value={renameName}
@@ -433,51 +447,53 @@ function FolderRow({
               }}
               onBlur={onRenameSubmit}
               onClick={(e) => e.stopPropagation()}
-              className="h-5 w-full rounded border border-input bg-transparent px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+              size="xs"
             />
           ) : (
             <span className="truncate">{folder.name}</span>
           )}
-          {folder.is_shared && (
-            <Globe size={9} className="shrink-0 text-muted-foreground/50" />
-          )}
-          <span className="ml-auto shrink-0 text-[0.75rem] text-muted-foreground/50">
-            {queries.length}
-          </span>
-        </button>
+          {folder.is_shared && <Globe size={9} className="shrink-0 text-muted-foreground/50" />}
+        </ObjectListItem>
         {!isRenaming && (
           <>
-            <button
+            <IconButton
+              aria-label="Rename folder"
               onClick={(e) => {
                 e.stopPropagation();
                 onStartRename();
               }}
+              size="xs"
+              icon={<Pencil size={10} />}
               className="mr-0.5 rounded p-0.5 text-muted-foreground/50 opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100"
               title="Rename folder"
-            >
-              <Pencil size={10} />
-            </button>
-            <button
+            />
+            <IconButton
+              aria-label={folder.is_shared ? "Unshare folder" : "Share folder"}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleShare();
               }}
-              className={`mr-0.5 rounded p-0.5 opacity-0 hover:bg-accent group-hover:opacity-100 ${folder.is_shared ? "text-foreground" : "text-muted-foreground/50 hover:text-foreground"
-                }`}
+              size="xs"
+              icon={<Globe size={10} />}
+              className={`mr-0.5 rounded p-0.5 opacity-0 hover:bg-accent group-hover:opacity-100 ${
+                folder.is_shared
+                  ? "text-foreground"
+                  : "text-muted-foreground/50 hover:text-foreground"
+              }`}
               title={folder.is_shared ? "Unshare folder" : "Share folder"}
-            >
-              <Globe size={10} />
-            </button>
-            <button
+            />
+            <IconButton
+              aria-label="Delete folder"
               onClick={(e) => {
                 e.stopPropagation();
                 onDeleteFolder();
               }}
+              variant="danger"
+              size="xs"
+              icon={<Trash2 size={10} />}
               className="mr-1 rounded p-0.5 text-muted-foreground/50 opacity-0 hover:bg-accent hover:text-destructive group-hover:opacity-100"
               title="Delete folder"
-            >
-              <Trash2 size={10} />
-            </button>
+            />
           </>
         )}
       </div>
@@ -526,19 +542,18 @@ function QueryRow({
 }) {
   return (
     <div className="group flex items-center">
-      <button
+      <ObjectListItem
         onClick={onOpen}
-        className={`flex flex-1 items-center gap-1.5 py-1 pr-2 text-xs hover:bg-accent/50 ${indent ? "pl-6" : "pl-2"
-          }`}
+        indicator={<FileText size={11} className="shrink-0 text-muted-foreground/50" />}
+        className={`py-1 pr-2 ${indent ? "pl-6" : "pl-2"}`}
         title={query.description ?? query.title}
       >
-        <FileText size={11} className="shrink-0 text-muted-foreground/50" />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex items-center gap-1">
             <span className="truncate">{query.title}</span>
             {query.is_shared && (
               <span title="Shared">
-                <Globe size={9} className="shrink-0 text-blue-500" />
+                <Globe size={9} className="shrink-0 text-info" />
               </span>
             )}
           </div>
@@ -548,57 +563,63 @@ function QueryRow({
             </span>
           )}
         </div>
-      </button>
+      </ObjectListItem>
       <div className="flex shrink-0 items-center">
         {onToggleFavorite && (
-          <button
+          <IconButton
+            aria-label={isFavorite ? "Unfavorite" : "Favorite"}
             onClick={(e) => {
               e.stopPropagation();
               onToggleFavorite();
             }}
-            className={`rounded p-0.5 ${isFavorite
-                ? "text-yellow-500"
+            size="xs"
+            icon={<Star size={10} fill={isFavorite ? "currentColor" : "none"} />}
+            className={`rounded p-0.5 ${
+              isFavorite
+                ? "text-warning"
                 : "text-muted-foreground/50 opacity-0 group-hover:opacity-100"
-              } hover:bg-accent`}
+            } hover:bg-accent`}
             title={isFavorite ? "Unfavorite" : "Favorite"}
-          >
-            <Star size={10} fill={isFavorite ? "currentColor" : "none"} />
-          </button>
+          />
         )}
         {isSharedByOther && onFork && (
-          <button
+          <IconButton
+            aria-label="Duplicate query"
             onClick={(e) => {
               e.stopPropagation();
               onFork();
             }}
+            size="xs"
+            icon={<Copy size={10} />}
             className="rounded p-0.5 text-muted-foreground/50 opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100"
             title="Duplicate query"
-          >
-            <Copy size={10} />
-          </button>
+          />
         )}
         {onViewHistory && (
-          <button
+          <IconButton
+            aria-label="Version history"
             onClick={(e) => {
               e.stopPropagation();
               onViewHistory();
             }}
+            size="xs"
+            icon={<Clock size={10} />}
             className="rounded p-0.5 text-muted-foreground/50 opacity-0 hover:bg-accent hover:text-foreground group-hover:opacity-100"
             title="Version history"
-          >
-            <Clock size={10} />
-          </button>
+          />
         )}
-        <button
+        <IconButton
+          aria-label="Delete query"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
+          variant="danger"
+          size="xs"
+          icon={<Trash2 size={10} />}
           className="mr-1 rounded p-0.5 text-muted-foreground/50 opacity-0 hover:bg-accent hover:text-destructive group-hover:opacity-100"
           title="Delete query"
-        >
-          <Trash2 size={10} />
-        </button>
+        />
       </div>
     </div>
   );

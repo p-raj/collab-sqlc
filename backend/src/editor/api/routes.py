@@ -60,6 +60,8 @@ class ExecuteQueryResponse(ApiSchema):
     rows: list[list[Any]]
     row_count: int
     execution_time_ms: float
+    result_shape: str = "tabular"
+    data: dict[str, Any] | list[Any] | str | int | float | bool | None = None
 
 
 class ExportQueryRequest(ApiSchema):
@@ -117,6 +119,8 @@ async def execute_query(
                 rows=result.rows,
                 row_count=result.row_count,
                 execution_time_ms=result.execution_time_ms,
+                result_shape=result.result_shape,
+                data=result.data,
             )
         if run.status in {RunStatus.ERROR, RunStatus.CANCELLED, RunStatus.TIMEOUT}:
             raise ValidationError(run.error_message or f"Query finished with status {run.status}")
@@ -274,6 +278,8 @@ async def execute_query_direct_compat(
         rows=result.rows,
         row_count=len(result.rows),
         execution_time_ms=result.execution_time_ms,
+        result_shape=result.result_shape,
+        data=result.data,
     )
 
 

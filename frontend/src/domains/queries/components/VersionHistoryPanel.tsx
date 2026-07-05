@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { History, RotateCcw, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { CodeBlock } from "@/shared/components/ui/CodeBlock";
+import { EmptyState, LoadingState } from "@/shared/components/ui/DataState";
+import { IconButton } from "@/shared/components/ui/IconButton";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
+import { Panel } from "@/shared/components/ui/Panel";
 import * as queriesApi from "../services/queries-api";
 import type { SavedQueryVersion } from "../types";
 
@@ -46,18 +51,17 @@ export function VersionHistoryPanel({ queryId, currentSql, onRestored }: Version
   );
 
   if (isLoading) {
-    return <div className="p-3 text-xs text-muted-foreground">Loading versions...</div>;
+    return <LoadingState label="Loading versions" showLabel className="justify-start p-3" />;
   }
 
   if (versions.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-1 p-4 text-center">
-        <History size={16} className="text-muted-foreground/50" />
-        <span className="text-xs text-muted-foreground">No version history yet</span>
-        <span className="text-[0.75rem] text-muted-foreground/60">
-          Versions are created when a query is updated
-        </span>
-      </div>
+      <EmptyState
+        icon={History}
+        title="No version history yet"
+        description="Versions are created when a query is updated."
+        className="p-4"
+      />
     );
   }
 
@@ -68,58 +72,63 @@ export function VersionHistoryPanel({ queryId, currentSql, onRestored }: Version
         const isExpanded = expandedId === v.id;
         const diffLines = computeSimpleDiff(v.sql, currentSql);
         return (
-          <div key={v.id} className="rounded border border-input/50 bg-card/50">
-            <button
-              onClick={() => setExpandedId(isExpanded ? null : v.id)}
-              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent/50"
-            >
-              {isExpanded ? (
-                <ChevronDown size={10} className="shrink-0" />
-              ) : (
-                <ChevronRight size={10} className="shrink-0" />
-              )}
-              <div className="flex min-w-0 flex-1 flex-col">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">v{v.version_number}</span>
-                  <span className="truncate text-muted-foreground">{v.title}</span>
+          <Panel key={v.id} className="rounded bg-card/50">
+            <div className="flex items-center">
+              <ObjectListItem
+                onClick={() => setExpandedId(isExpanded ? null : v.id)}
+                indicator={
+                  isExpanded ? (
+                    <ChevronDown size={10} className="shrink-0" />
+                  ) : (
+                    <ChevronRight size={10} className="shrink-0" />
+                  )
+                }
+                className="px-2 py-1.5"
+              >
+                <div className="flex min-w-0 flex-col text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">v{v.version_number}</span>
+                    <span className="truncate text-muted-foreground">{v.title}</span>
+                  </div>
+                  <span className="text-[0.75rem] text-muted-foreground/60">
+                    {new Date(v.created_at).toLocaleString()}
+                  </span>
                 </div>
-                <span className="text-[0.75rem] text-muted-foreground/60">
-                  {new Date(v.created_at).toLocaleString()}
-                </span>
-              </div>
-              <button
+              </ObjectListItem>
+              <IconButton
+                aria-label="Restore this version"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleRestore(v.id);
                 }}
-                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+                icon={<RotateCcw size={11} />}
+                size="xs"
                 title="Restore this version"
-              >
-                <RotateCcw size={11} />
-              </button>
-            </button>
+              />
+            </div>
             {isExpanded && (
               <div className="border-t border-input/50 p-2">
-                <div className="max-h-40 overflow-auto rounded bg-muted/30 p-2 font-mono text-[0.75rem]">
+                <CodeBlock className="max-h-40 border-0 bg-muted/30 p-2 text-[0.75rem]">
                   {diffLines.map((line, i) => (
-                    <div
+                    <span
                       key={i}
+                      role="presentation"
                       className={
                         line.type === "add"
-                          ? "text-green-600"
+                          ? "block text-success"
                           : line.type === "remove"
-                            ? "text-red-500"
-                            : "text-muted-foreground"
+                            ? "block text-destructive"
+                            : "block text-muted-foreground"
                       }
                     >
                       {line.type === "add" ? "+ " : line.type === "remove" ? "- " : "  "}
                       {line.text}
-                    </div>
+                    </span>
                   ))}
-                </div>
+                </CodeBlock>
               </div>
             )}
-          </div>
+          </Panel>
         );
       })}
     </div>

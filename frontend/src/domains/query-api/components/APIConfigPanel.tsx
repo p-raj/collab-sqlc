@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Key,
-  Copy,
-  RefreshCw,
-  Shield,
-  Clock,
-  Hash,
-  Loader2,
-  AlertTriangle,
-  Globe,
-  Code2,
-} from "lucide-react";
+import { Key, Copy, RefreshCw, Shield, Clock, Hash, Globe, Code2 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/shared/components/ui/Button";
+import { Callout } from "@/shared/components/ui/Callout";
+import { Checkbox } from "@/shared/components/ui/Checkbox";
+import { CodeBlock, InlineCode } from "@/shared/components/ui/CodeBlock";
+import { EmptyState } from "@/shared/components/ui/DataState";
+import { Field, FieldLabel } from "@/shared/components/ui/Field";
+import { Input } from "@/shared/components/ui/Input";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
+import { Select } from "@/shared/components/ui/Select";
+import { TabButton, TabsRoot } from "@/shared/components/ui/Tabs";
+import { Textarea } from "@/shared/components/ui/Textarea";
 import * as queryApiService from "../services/query-api";
 import type { ParameterDef, EnableAPIResponse } from "../types";
 import { buildHostedApiPath, buildHostedApiUrl } from "../utils/hosted-api-url";
@@ -372,14 +372,9 @@ print(response.json())`,
           <p>This query is not hosted as an API.</p>
           <p className="mt-1 text-xs">Host it to generate an API key and endpoint URL.</p>
         </div>
-        <button
-          onClick={handleEnable}
-          disabled={loading}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+        <Button onClick={handleEnable} variant="primary" loading={loading} className="w-full">
           Host as API
-        </button>
+        </Button>
       </div>
     );
   }
@@ -388,22 +383,18 @@ print(response.json())`,
     <div className="p-3 space-y-4 text-sm">
       {/* SQL Drift Warning */}
       {hasSqlDrift && (
-        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
-          <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-          <div className="text-xs">
-            <p className="font-medium">SQL has changed</p>
-            <p className="text-muted-foreground">
-              The editor SQL differs from the published API SQL.
-            </p>
-            <button
-              onClick={handleRepublish}
-              disabled={loading}
-              className="mt-1 text-primary underline"
-            >
-              Republish now
-            </button>
-          </div>
-        </div>
+        <Callout tone="warning" title="SQL has changed">
+          <p>The editor SQL differs from the published API SQL.</p>
+          <Button
+            onClick={handleRepublish}
+            variant="ghost"
+            size="xs"
+            loading={loading}
+            className="mt-1 px-0 text-primary underline hover:bg-transparent"
+          >
+            Republish now
+          </Button>
+        </Callout>
       )}
 
       {/* API Key */}
@@ -417,21 +408,17 @@ print(response.json())`,
               {newKey}
             </div>
             <div className="flex items-center gap-2">
-              <button
+              <Button
                 type="button"
                 onClick={copyKey}
-                className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                variant="primary"
+                leftIcon={<Copy className="h-3 w-3" />}
               >
-                <Copy className="h-3 w-3" />
                 Copy API key
-              </button>
-              <button
-                type="button"
-                onClick={() => setNewKey(null)}
-                className="inline-flex items-center gap-1 rounded-md border border-input px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
+              </Button>
+              <Button type="button" onClick={() => setNewKey(null)}>
                 Hide
-              </button>
+              </Button>
             </div>
             <p className="text-[10px] text-destructive">
               Store this key securely. It will not be shown again.
@@ -446,13 +433,14 @@ print(response.json())`,
             </p>
           </div>
         )}
-        <button
+        <Button
           onClick={handleRotateKey}
-          disabled={loading}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          variant="ghost"
+          loading={loading}
+          leftIcon={<RefreshCw className="h-3 w-3" />}
         >
-          <RefreshCw className="h-3 w-3" /> Rotate key
-        </button>
+          Rotate key
+        </Button>
       </section>
 
       {/* Quick start */}
@@ -462,14 +450,14 @@ print(response.json())`,
             <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <Code2 className="h-3 w-3" /> Quick start
             </h4>
-            <button
+            <Button
               type="button"
               onClick={copyQuickstartSnippet}
-              className="inline-flex items-center gap-1 rounded-md border border-input px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+              size="xs"
+              leftIcon={<Copy className="h-3 w-3" />}
             >
-              <Copy className="h-3 w-3" />
               Copy snippet
-            </button>
+            </Button>
           </div>
 
           <div className="space-y-3 rounded-md border bg-muted/20 p-3">
@@ -477,46 +465,43 @@ print(response.json())`,
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 Endpoint
               </p>
-              <button
+              <ObjectListItem
                 type="button"
                 onClick={copyEndpoint}
                 title={`Copy endpoint URL: ${hostedApiUrl}`}
-                className="inline-flex w-full items-center gap-1.5 rounded border border-input bg-background px-2 py-1.5 text-left text-xs text-foreground hover:bg-accent"
+                indicator={<Globe className="h-3 w-3 shrink-0 text-success" />}
+                meta={<Copy className="h-3 w-3 shrink-0 text-muted-foreground" />}
+                className="rounded border border-input bg-background px-2 py-1.5"
               >
-                <Globe className="h-3 w-3 shrink-0 text-emerald-500" />
                 <span className="min-w-0 flex-1 truncate font-mono">{hostedApiPath}</span>
-                <Copy className="h-3 w-3 shrink-0 text-muted-foreground" />
-              </button>
+              </ObjectListItem>
             </div>
 
-            <div className="flex flex-wrap gap-1">
+            <TabsRoot className="flex-wrap gap-1">
               {QUICKSTART_LANGUAGES.map((language) => (
-                <button
+                <TabButton
                   key={language.id}
                   type="button"
                   onClick={() => setQuickstartLanguage(language.id)}
                   aria-pressed={quickstartLanguage === language.id}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                    quickstartLanguage === language.id
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                  }`}
+                  active={quickstartLanguage === language.id}
+                  className="h-7 rounded-md border-b-0 px-2.5 py-1"
                 >
                   {language.label}
-                </button>
+                </TabButton>
               ))}
-            </div>
+            </TabsRoot>
 
             {!newKey && (
               <p className="text-[10px] text-muted-foreground">
-                Snippets use <span className="font-mono">YOUR_API_KEY</span>. Rotate the key if you
-                want copy-ready examples with the live secret.
+                Snippets use <InlineCode>YOUR_API_KEY</InlineCode>. Rotate the key if you want
+                copy-ready examples with the live secret.
               </p>
             )}
 
-            <pre className="max-h-80 overflow-auto rounded-md border bg-background p-3 text-[11px] leading-relaxed text-foreground">
+            <CodeBlock className="max-h-80 bg-background text-[11px] leading-relaxed">
               <code>{activeQuickstartSnippet}</code>
-            </pre>
+            </CodeBlock>
           </div>
         </section>
       )}
@@ -527,12 +512,16 @@ print(response.json())`,
           Parameters
         </h4>
         {editParameters.length === 0 ? (
-          <p className="rounded border border-dashed px-3 py-2 text-xs text-muted-foreground">
-            No SQL parameters detected yet. Add placeholders like{" "}
-            <span className="font-mono">$id</span> or{" "}
-            <span className="font-mono">{"{id:number}"}</span> in your SQL, then reopen or
-            republish.
-          </p>
+          <EmptyState
+            title="No SQL parameters detected yet"
+            description={
+              <>
+                Add placeholders like <InlineCode>$id</InlineCode> or{" "}
+                <InlineCode>{"{id:number}"}</InlineCode> in your SQL, then reopen or republish.
+              </>
+            }
+            className="items-start rounded border border-dashed px-3 py-2 text-left"
+          />
         ) : (
           <div className="space-y-2">
             {editParameters.map((parameter, index) => (
@@ -543,37 +532,35 @@ print(response.json())`,
                     <p className="text-[10px] text-muted-foreground">Detected from SQL</p>
                   </div>
                   <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={!parameter.required}
                       onChange={(e) => updateParameter(index, { required: !e.target.checked })}
-                      className="rounded border-input"
                     />
                     Optional
                   </label>
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  <label className="space-y-1">
-                    <span className="text-[10px] text-muted-foreground">Type</span>
-                    <select
+                  <Field>
+                    <FieldLabel>Type</FieldLabel>
+                    <Select
                       value={parameter.type}
                       onChange={(e) =>
                         updateParameter(index, {
                           type: e.target.value as ParameterDef["type"],
                         })
                       }
-                      className="w-full rounded border bg-background px-2 py-1 text-xs"
+                      size="sm"
                     >
                       {PARAMETER_TYPES.map((type) => (
                         <option key={type} value={type}>
                           {type}
                         </option>
                       ))}
-                    </select>
-                  </label>
-                  <label className="space-y-1">
-                    <span className="text-[10px] text-muted-foreground">Default</span>
-                    <input
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Default</FieldLabel>
+                    <Input
                       type="text"
                       value={parameter.default == null ? "" : String(parameter.default)}
                       onChange={(e) =>
@@ -582,9 +569,9 @@ print(response.json())`,
                         })
                       }
                       placeholder={parameter.required ? "None" : "Optional default"}
-                      className="w-full rounded border bg-background px-2 py-1 text-xs"
+                      size="sm"
                     />
-                  </label>
+                  </Field>
                 </div>
               </div>
             ))}
@@ -598,40 +585,40 @@ print(response.json())`,
           <Shield className="h-3 w-3" /> Limits
         </h4>
         <div className="grid grid-cols-2 gap-2">
-          <label className="space-y-0.5">
-            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+          <Field>
+            <FieldLabel className="flex items-center gap-1">
               <Hash className="h-2.5 w-2.5" /> Row limit
-            </span>
-            <input
+            </FieldLabel>
+            <Input
               type="number"
               value={editRowLimit}
               onChange={(e) => setEditRowLimit(e.target.value)}
               placeholder="No limit"
-              className="w-full rounded border bg-background px-2 py-1 text-xs"
+              size="sm"
             />
-          </label>
-          <label className="space-y-0.5">
-            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+          </Field>
+          <Field>
+            <FieldLabel className="flex items-center gap-1">
               <Clock className="h-2.5 w-2.5" /> Rate limit
-            </span>
-            <input
+            </FieldLabel>
+            <Input
               type="number"
               value={editRateLimit}
               onChange={(e) => setEditRateLimit(e.target.value)}
               placeholder="req/min"
-              className="w-full rounded border bg-background px-2 py-1 text-xs"
+              size="sm"
             />
-          </label>
-          <label className="space-y-0.5 col-span-2">
-            <span className="text-[10px] text-muted-foreground">Timeout (seconds)</span>
-            <input
+          </Field>
+          <Field className="col-span-2">
+            <FieldLabel>Timeout (seconds)</FieldLabel>
+            <Input
               type="number"
               value={editTimeout}
               onChange={(e) => setEditTimeout(e.target.value)}
               placeholder="Connection default"
-              className="w-full rounded border bg-background px-2 py-1 text-xs"
+              size="sm"
             />
-          </label>
+          </Field>
         </div>
       </section>
 
@@ -640,11 +627,11 @@ print(response.json())`,
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           IP Allowlist
         </h4>
-        <input
+        <Input
           value={editIps}
           onChange={(e) => setEditIps(e.target.value)}
           placeholder="Any IP (comma-separated to restrict)"
-          className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+          size="sm"
         />
       </section>
 
@@ -653,32 +640,23 @@ print(response.json())`,
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Notes
         </h4>
-        <textarea
+        <Textarea
           value={editNotes}
           onChange={(e) => setEditNotes(e.target.value)}
           placeholder="Internal notes about this API endpoint..."
           rows={2}
-          className="w-full rounded border bg-background px-2 py-1.5 text-xs resize-none"
+          size="sm"
         />
       </section>
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-2 border-t">
-        <button
-          onClick={handleSaveConfig}
-          disabled={loading}
-          className="flex-1 inline-flex items-center justify-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+        <Button onClick={handleSaveConfig} variant="primary" loading={loading} className="flex-1">
           Save Config
-        </button>
-        <button
-          onClick={handleDisable}
-          disabled={loading}
-          className="inline-flex items-center justify-center gap-1 rounded-md border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
-        >
+        </Button>
+        <Button onClick={handleDisable} disabled={loading} variant="danger">
           Unhost
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -31,10 +31,21 @@ func initDockerCompose() {
 
 // DockerCompose runs docker compose with the project compose file and extra args.
 func DockerCompose(extraArgs ...string) error {
+	return dockerComposeWithFiles([]string{ComposeFile}, extraArgs...)
+}
+
+// DockerComposeDev runs docker compose with production defaults plus dev overrides.
+func DockerComposeDev(extraArgs ...string) error {
+	return dockerComposeWithFiles([]string{ComposeFile, DevComposeFile}, extraArgs...)
+}
+
+func dockerComposeWithFiles(files []string, extraArgs ...string) error {
 	initDockerCompose()
-	args := make([]string, 0, len(dockerComposeCmd)+2+len(extraArgs))
+	args := make([]string, 0, len(dockerComposeCmd)+(2*len(files))+len(extraArgs))
 	args = append(args, dockerComposeCmd[1:]...)
-	args = append(args, "-f", ComposeFile)
+	for _, file := range files {
+		args = append(args, "-f", file)
+	}
 	args = append(args, extraArgs...)
 	return Run(RootDir, dockerComposeCmd[0], args...)
 }

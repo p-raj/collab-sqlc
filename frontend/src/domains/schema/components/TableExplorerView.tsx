@@ -1,13 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, ChevronRight, Play, RefreshCw, Search, Table2 } from "lucide-react";
-import { useSchemaStore } from "../hooks/use-schema-store";
+import { ChevronRight, Play, Search, Table2 } from "lucide-react";
+import { Badge } from "@/shared/components/ui/Badge";
+import { Button } from "@/shared/components/ui/Button";
+import { CommandCard } from "@/shared/components/ui/CommandCard";
+import {
+  EmptyState,
+  ErrorState as SharedErrorState,
+  LoadingState as SharedLoadingState,
+} from "@/shared/components/ui/DataState";
+import { Input } from "@/shared/components/ui/Input";
+import { MetadataRow } from "@/shared/components/ui/MetadataRow";
+import { Panel } from "@/shared/components/ui/Panel";
+import { SectionHeader } from "@/shared/components/ui/SectionHeader";
+import { TabButton, TabsRoot } from "@/shared/components/ui/Tabs";
+import { getObjectDetailKey, useSchemaStore } from "../hooks/use-schema-store";
 import { TableExplorerErdCanvas } from "./TableExplorerErdCanvas";
 import type {
   ColumnInfo,
+  ObjectSection,
   TableErdInfo,
   TableConstraintInfo,
   TableExplorerTabId,
   TableMetadataInfo,
+  TableMetadataPropertyInfo,
   TableRelationshipInfo,
 } from "../types";
 
@@ -16,6 +31,7 @@ interface TableExplorerViewProps {
   connectionName: string;
   schemaName: string;
   tableName: string;
+  objectId?: string;
   activeSection: TableExplorerTabId;
   onChangeSection: (section: TableExplorerTabId) => void;
   onPreviewQuery: (sql: string) => void;
@@ -33,6 +49,7 @@ export function TableExplorerView({
   connectionName,
   schemaName,
   tableName,
+  objectId,
   activeSection,
   onChangeSection,
   onPreviewQuery,
@@ -40,18 +57,52 @@ export function TableExplorerView({
   const [filter, setFilter] = useState("");
   const tableDetailKey = `${connectionId}:${schemaName}:${tableName}`;
   const fetchTableDetail = useSchemaStore((store) => store.fetchTableDetail);
+  const fetchObjectDetail = useSchemaStore((store) => store.fetchObjectDetail);
   const detail = useSchemaStore((store) => store.tableDetails[tableDetailKey] ?? null);
+  const objectDetail = useSchemaStore((store) =>
+    objectId ? (store.objectDetails[getObjectDetailKey(connectionId, objectId)] ?? null) : null,
+  );
   const error = useSchemaStore((store) => store.tableDetailErrors[tableDetailKey] || null);
+  const objectError = useSchemaStore((store) =>
+    objectId ? store.objectDetailErrors[getObjectDetailKey(connectionId, objectId)] || null : null,
+  );
 
   useEffect(() => {
-    void fetchTableDetail(connectionId, schemaName, tableName);
-  }, [connectionId, fetchTableDetail, schemaName, tableName]);
+    if (objectId) {
+      void fetchObjectDetail(connectionId, objectId);
+    } else {
+      void fetchTableDetail(connectionId, schemaName, tableName);
+    }
+  }, [connectionId, fetchObjectDetail, fetchTableDetail, objectId, schemaName, tableName]);
 
   useEffect(() => {
     setFilter("");
   }, [activeSection, connectionId, schemaName, tableName]);
 
-  const table = detail?.table ?? null;
+  const table = objectDetail?.sections.find((section) => section.kind === "attributes")
+    ? {
+        columns:
+          objectDetail.sections.find((section) => section.kind === "attributes")?.columns ?? [],
+        comment: null,
+        row_count: null,
+      }
+    : (detail?.table ?? null);
+  const activeObjectSection =
+    objectDetail?.sections.find((section) => section.id === activeSection) ??
+    objectDetail?.sections[0] ??
+    null;
+  const previewText =
+    objectDetail?.preview_operation.text ??
+    `SELECT * FROM "${schemaName}"."${tableName}" LIMIT 100`;
+  const previewLabel = objectDetail?.preview_operation.label ?? "Preview";
+  const objectKindLabel = objectDetail?.object.kind === "key" ? "key" : "table";
+  const objectDescription =
+    objectDetail?.object.kind === "key"
+      ? "Explore key metadata and starter read commands for this Redis key."
+      : objectDetail
+        ? "Explore object metadata, attributes, indexes, and starter operations."
+        : (detail?.table.comment ??
+          "Explore structure, relationships, metadata, and the local ERD for this table.");
 
   const filteredColumns = useMemo(() => {
     if (!table) return [];
@@ -79,68 +130,129 @@ export function TableExplorerView({
             <h1 className="truncate text-lg font-semibold">
               {schemaName}.{tableName}
             </h1>
+            {objectDetail && <Badge className="uppercase tracking-wide">{objectKindLabel}</Badge>}
           </div>
-          <button
-            onClick={() => onPreviewQuery(`SELECT * FROM "${schemaName}"."${tableName}" LIMIT 100`)}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          <Button
+            onClick={() => onPreviewQuery(previewText)}
+            variant="primary"
+            size="md"
+            leftIcon={<Play size={12} />}
           >
-            <Play size={12} />
-            Preview
-          </button>
+            {previewLabel}
+          </Button>
         </div>
 
         <p className="mb-5 text-sm text-muted-foreground">
-          {table?.comment ??
-            "Explore structure, relationships, metadata, and the local ERD for this table."}
-          {table?.row_count != null && (
-            <span className="ml-2 text-xs">~{table.row_count.toLocaleString()} rows</span>
+          {objectDescription}
+          {detail?.table.row_count != null && (
+            <span className="ml-2 text-xs">~{detail.table.row_count.toLocaleString()} rows</span>
           )}
         </p>
 
-        <div
+        <TabsRoot
           role="tablist"
           aria-label="Table explorer sections"
-          className="mb-5 flex items-center gap-4 border-b"
+          className="mb-5 gap-4 border-b"
         >
-          {EXPLORER_TABS.map((tab) => (
-            <button
+          {(objectDetail?.sections.map((section) => ({ id: section.id, label: section.title })) ??
+            EXPLORER_TABS
+          ).map((tab) => (
+            <TabButton
               key={tab.id}
               role="tab"
-              aria-selected={activeSection === tab.id}
+              aria-selected={(activeObjectSection?.id ?? activeSection) === tab.id}
+              active={(activeObjectSection?.id ?? activeSection) === tab.id}
               onClick={() => onChangeSection(tab.id)}
-              className={`pb-2 text-sm font-medium ${
-                activeSection === tab.id
-                  ? "border-b-2 border-foreground text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className="h-auto pb-2 text-sm"
             >
               {tab.label}
-            </button>
+            </TabButton>
           ))}
-        </div>
+        </TabsRoot>
 
-        {!detail && error && (
+        {!objectId && !detail && error && (
           <ErrorState
             message={error}
             onRetry={() => void fetchTableDetail(connectionId, schemaName, tableName, true)}
           />
         )}
-        {!detail && !error && <LoadingState />}
+        {objectId && !objectDetail && objectError && (
+          <ErrorState
+            message={objectError}
+            onRetry={() => void fetchObjectDetail(connectionId, objectId, true)}
+          />
+        )}
+        {!objectId && !detail && !error && (
+          <SharedLoadingState label="Loading table details" showLabel className="rounded-lg border p-4" />
+        )}
+        {objectId && !objectDetail && !objectError && (
+          <SharedLoadingState label="Loading object details" showLabel className="rounded-lg border p-4" />
+        )}
 
-        {detail && activeSection === "schema" && (
+        {objectDetail && activeObjectSection && (
+          <ObjectSectionView
+            section={activeObjectSection}
+            filter={filter}
+            onFilterChange={setFilter}
+            onPreviewQuery={onPreviewQuery}
+          />
+        )}
+        {!objectDetail && detail && activeSection === "schema" && (
           <SchemaSection columns={filteredColumns} filter={filter} onFilterChange={setFilter} />
         )}
-        {detail && activeSection === "relationships" && (
+        {!objectDetail && detail && activeSection === "relationships" && (
           <RelationshipsSection
             incoming={detail.relationships.incoming}
             outgoing={detail.relationships.outgoing}
           />
         )}
-        {detail && activeSection === "metadata" && <MetadataSection metadata={detail.metadata} />}
-        {detail && activeSection === "erd" && <ErdSection erd={detail.erd} />}
+        {!objectDetail && detail && activeSection === "metadata" && (
+          <MetadataSection metadata={detail.metadata} />
+        )}
+        {!objectDetail && detail && activeSection === "erd" && <ErdSection erd={detail.erd} />}
       </div>
     </div>
   );
+}
+
+function ObjectSectionView({
+  section,
+  filter,
+  onFilterChange,
+  onPreviewQuery,
+}: {
+  section: ObjectSection;
+  filter: string;
+  onFilterChange: (value: string) => void;
+  onPreviewQuery: (sql: string) => void;
+}) {
+  if (section.kind === "attributes") {
+    return (
+      <SchemaSection columns={section.columns} filter={filter} onFilterChange={onFilterChange} />
+    );
+  }
+  if (section.kind === "relationships" && section.relationships) {
+    return (
+      <RelationshipsSection
+        incoming={section.relationships.incoming}
+        outgoing={section.relationships.outgoing}
+      />
+    );
+  }
+  if (section.kind === "erd" && section.erd) {
+    return <ErdSection erd={section.erd} />;
+  }
+  if (section.kind === "indexes") {
+    return (
+      <MetadataSection
+        metadata={{ indexes: section.indexes, constraints: [], enums: [], properties: [] }}
+      />
+    );
+  }
+  if (section.kind === "snippets") {
+    return <SnippetsSection section={section} onPreviewQuery={onPreviewQuery} />;
+  }
+  return <PropertiesSection section={section} />;
 }
 
 function SchemaSection({
@@ -159,23 +271,24 @@ function SchemaSection({
           size={14}
           className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50"
         />
-        <input
+        <Input
           type="text"
           placeholder="Type to filter columns..."
           value={filter}
           onChange={(event) => onFilterChange(event.target.value)}
-          className="h-8 w-full rounded border border-input bg-transparent pl-8 pr-3 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+          size="md"
+          className="pl-8 text-xs"
         />
       </div>
 
       <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
         <span>Columns</span>
-        <span className="rounded bg-accent px-1.5 py-0.5 text-[0.75rem]">{columns.length}</span>
+        <Badge>{columns.length}</Badge>
       </div>
 
-      <div className="overflow-x-auto rounded border">
+      <Panel className="overflow-x-auto rounded-md">
         <ColumnTable columns={columns} />
-      </div>
+      </Panel>
     </div>
   );
 }
@@ -199,21 +312,19 @@ function ColumnTable({ columns }: { columns: ColumnInfo[] }) {
               <span className="flex items-center gap-1.5">
                 <span className="font-medium">{column.name}</span>
                 {column.is_primary_key && (
-                  <span className="rounded bg-foreground/10 px-1 py-0.5 text-[0.75rem] font-medium">
+                  <Badge className="bg-foreground/10 text-foreground">
                     PK
-                  </span>
+                  </Badge>
                 )}
                 {column.foreign_key && !column.is_primary_key && (
-                  <span className="rounded bg-accent px-1 py-0.5 text-[0.75rem] font-medium">
-                    FK
-                  </span>
+                  <Badge>FK</Badge>
                 )}
               </span>
             </td>
             <td className="px-3 py-2">
-              <span className="rounded bg-accent px-1.5 py-0.5 text-[11px] font-mono">
+              <Badge className="font-mono text-[11px]">
                 {column.data_type}
-              </span>
+              </Badge>
             </td>
             <td className="px-3 py-2 text-muted-foreground">
               {column.is_nullable ? "NULL" : "NOT NULL"}
@@ -283,7 +394,7 @@ function RelationshipColumn({
           No {title.toLowerCase()} links
         </div>
       ) : (
-        <div className="overflow-hidden rounded-md border bg-card">
+        <Panel className="overflow-hidden rounded-md">
           {relationships.map((relationship) => {
             const relatedTable =
               direction === "incoming"
@@ -330,9 +441,79 @@ function RelationshipColumn({
               </div>
             );
           })}
-        </div>
+        </Panel>
       )}
     </section>
+  );
+}
+
+function PropertiesSection({ section }: { section: ObjectSection }) {
+  if (section.properties.length === 0) {
+    return (
+      <EmptyState
+        title="No details available"
+        description={section.description ?? "This object did not return additional metadata."}
+      />
+    );
+  }
+  return (
+    <section className="space-y-3">
+      <SectionHeader
+        title={section.title}
+        description={section.description ?? "Object metadata returned by this engine."}
+      />
+      <PropertyList properties={section.properties} />
+    </section>
+  );
+}
+
+function SnippetsSection({
+  section,
+  onPreviewQuery,
+}: {
+  section: ObjectSection;
+  onPreviewQuery: (sql: string) => void;
+}) {
+  if (section.snippets.length === 0) {
+    return (
+      <EmptyState
+        title="No snippets available"
+        description="This engine did not provide starter operations for the selected object."
+      />
+    );
+  }
+  return (
+    <section className="space-y-3">
+      <SectionHeader
+        title={section.title}
+        description={section.description ?? "Starter operations for the selected object."}
+      />
+      <div className="space-y-2">
+        {section.snippets.map((snippet) => (
+          <CommandCard
+            key={`${snippet.label}-${snippet.text}`}
+            onClick={() => onPreviewQuery(snippet.text)}
+            title={snippet.label}
+            command={snippet.text}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PropertyList({ properties }: { properties: TableMetadataPropertyInfo[] }) {
+  return (
+    <Panel className="overflow-hidden rounded-md p-2">
+      {properties.map((property) => (
+        <MetadataRow
+          key={property.label}
+          label={property.label}
+          value={property.value}
+          className="border-b px-1 last:border-b-0"
+        />
+      ))}
+    </Panel>
   );
 }
 
@@ -357,21 +538,17 @@ function MetadataSection({ metadata }: { metadata: TableMetadataInfo }) {
       {metadata.indexes.length > 0 && (
         <section className="space-y-3">
           <SectionHeader title="Indexes" description="How this table is optimized for lookups." />
-          <div className="overflow-hidden rounded-md border bg-card">
+          <Panel className="overflow-hidden rounded-md">
             {metadata.indexes.map((index) => (
               <div key={index.name} className="space-y-2 border-b p-3 last:border-b-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{index.name}</span>
                   {index.is_primary && (
-                    <span className="rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] font-medium">
+                    <Badge className="bg-foreground/10 text-foreground">
                       Primary
-                    </span>
+                    </Badge>
                   )}
-                  {index.is_unique && (
-                    <span className="rounded bg-accent px-1.5 py-0.5 text-[11px] font-medium">
-                      Unique
-                    </span>
-                  )}
+                  {index.is_unique && <Badge>Unique</Badge>}
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {(index.columns.length > 0 ? index.columns.join(", ") : "Expression index") +
@@ -384,7 +561,7 @@ function MetadataSection({ metadata }: { metadata: TableMetadataInfo }) {
                 )}
               </div>
             ))}
-          </div>
+          </Panel>
         </section>
       )}
 
@@ -394,7 +571,7 @@ function MetadataSection({ metadata }: { metadata: TableMetadataInfo }) {
             title="Constraints"
             description="Integrity rules enforced by the database."
           />
-          <div className="overflow-hidden rounded-md border bg-card">
+          <Panel className="overflow-hidden rounded-md">
             {metadata.constraints.map((constraint) => (
               <div
                 key={`${constraint.kind}-${constraint.name}`}
@@ -402,9 +579,9 @@ function MetadataSection({ metadata }: { metadata: TableMetadataInfo }) {
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{constraint.name}</span>
-                  <span className="rounded bg-accent px-1.5 py-0.5 text-[11px] font-medium capitalize">
+                  <Badge className="capitalize">
                     {constraint.kind.replaceAll("_", " ")}
-                  </span>
+                  </Badge>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {describeConstraint(constraint)}
@@ -416,14 +593,14 @@ function MetadataSection({ metadata }: { metadata: TableMetadataInfo }) {
                 )}
               </div>
             ))}
-          </div>
+          </Panel>
         </section>
       )}
 
       {metadata.enums.length > 0 && (
         <section className="space-y-3">
           <SectionHeader title="Enums" description="Columns bound to enumerated values." />
-          <div className="overflow-hidden rounded-md border bg-card">
+          <Panel className="overflow-hidden rounded-md">
             {metadata.enums.map((enumInfo) => (
               <div
                 key={`${enumInfo.column_name}-${enumInfo.enum_schema_name}.${enumInfo.enum_name}`}
@@ -437,33 +614,21 @@ function MetadataSection({ metadata }: { metadata: TableMetadataInfo }) {
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {enumInfo.values.map((value) => (
-                    <span key={value} className="rounded bg-muted px-2 py-1 text-xs">
+                    <Badge key={value}>
                       {value}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>
             ))}
-          </div>
+          </Panel>
         </section>
       )}
 
       {metadata.properties.length > 0 && (
         <section className="space-y-3">
           <SectionHeader title="Properties" description="Database-specific table settings." />
-          <div className="overflow-hidden rounded-md border bg-card">
-            {metadata.properties.map((property) => (
-              <div
-                key={property.label}
-                className="flex items-start justify-between gap-4 border-b px-3 py-2 last:border-b-0"
-              >
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {property.label}
-                </div>
-                <div className="text-right text-sm font-medium">{property.value}</div>
-              </div>
-            ))}
-          </div>
+          <PropertyList properties={metadata.properties} />
         </section>
       )}
     </div>
@@ -483,52 +648,17 @@ function ErdSection({ erd }: { erd: TableErdInfo }) {
   return <TableExplorerErdCanvas erd={erd} />;
 }
 
-function SectionHeader({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="space-y-1">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      <p className="text-xs text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function LoadingState() {
-  return (
-    <div aria-busy="true" className="space-y-3 rounded-lg border p-4">
-      {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className="h-10 animate-pulse rounded bg-muted" />
-      ))}
-    </div>
-  );
-}
-
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-      <div className="flex items-start gap-3">
-        <AlertCircle size={16} className="mt-0.5 shrink-0 text-destructive" />
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-foreground">Unable to load table details</div>
-          <div className="mt-1 text-sm text-muted-foreground">{message}</div>
-          <button
-            onClick={onRetry}
-            className="mt-3 inline-flex h-8 items-center gap-1.5 rounded border border-input px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent"
-          >
-            <RefreshCw size={12} />
-            Retry
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="rounded-lg border border-dashed p-8 text-center">
-      <div className="text-sm font-medium">{title}</div>
-      <div className="mt-2 text-sm text-muted-foreground">{description}</div>
-    </div>
+    <SharedErrorState
+      title="Unable to load table details"
+      message={message}
+      className="rounded-lg border border-destructive/30 bg-destructive/5 p-4"
+    >
+      <Button onClick={onRetry} className="mt-3" size="md">
+        Retry
+      </Button>
+    </SharedErrorState>
   );
 }
 

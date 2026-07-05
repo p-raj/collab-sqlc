@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
@@ -21,7 +23,16 @@ from src.connections.drivers.base import (
     TableRelationshipInfo,
     TableRelationshipsInfo,
 )
+from src.connections.engine_registry import get_database_engine
 from src.shared.domain.errors import NotFoundError
+from src.schema.domain.explorer_models import (
+    CatalogObjectInfo,
+    CatalogObjectKind,
+    CatalogObjectRef,
+    ObjectDetailInfo,
+    ObjectSectionInfo,
+    PreviewOperationInfo,
+)
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -39,10 +50,12 @@ class SchemaService:
         connection_service: ConnectionService,
         redis: Redis,
         cache_ttl: int = 300,
+        dynamodb_cache_ttl: int = 86400,
     ) -> None:
         self._conn_service = connection_service
         self._redis = redis
         self._cache_ttl = cache_ttl
+        self._dynamodb_cache_ttl = dynamodb_cache_ttl
 
     async def get_schema(
         self,
@@ -58,7 +71,7 @@ class SchemaService:
                 return cached, True
 
         schema = await self._introspect(conn_model)
-        await self._write_cache(cache_key, schema)
+        await self._write_cache(cache_key, schema, self._cache_ttl_for(conn_model))
         return schema, False
 
     async def invalidate(self, connection_id: str) -> None:
@@ -96,8 +109,53 @@ class SchemaService:
             metadata=metadata,
             erd=erd,
         )
-        await self._write_table_detail_cache(cache_key, detail)
+        await self._write_table_detail_cache(cache_key, detail, self._cache_ttl_for(conn_model))
         return detail, False
+
+    async def get_catalog_objects(
+        self,
+        conn_model: ConnectionModel,
+        force_refresh: bool = False,
+    ) -> tuple[list[CatalogObjectInfo], bool]:
+        schema, was_cached = await self.get_schema(conn_model, force_refresh=force_refresh)
+        objects = [_table_to_catalog_object(conn_model.db_type, table) for table in schema.tables]
+        return objects, was_cached
+
+    async def get_object_detail(
+        self,
+        conn_model: ConnectionModel,
+        object_id: str,
+        force_refresh: bool = False,
+    ) -> tuple[ObjectDetailInfo, bool]:
+        ref = _decode_object_id(object_id)
+        _validate_object_ref(ref, conn_model.db_type, object_id)
+        schema_name = ref.namespace
+        table_name = ref.name
+        detail, was_cached = await self.get_table_detail(
+            conn_model,
+            schema_name,
+            table_name,
+            force_refresh=force_refresh,
+        )
+        catalog_object = _table_to_catalog_object(conn_model.db_type, detail.table)
+        preview = _preview_operation(conn_model.db_type, detail.table)
+        sections = _object_sections(conn_model.db_type, detail)
+        return (
+            ObjectDetailInfo(
+                object=catalog_object,
+                engine_kind=_engine_kind(conn_model.db_type),
+                sections=sections,
+                preview_operation=preview,
+            ),
+            was_cached,
+        )
+
+    def _cache_ttl_for(self, conn_model: ConnectionModel) -> int:
+        return (
+            self._dynamodb_cache_ttl
+            if getattr(conn_model, "db_type", None) == "dynamodb"
+            else self._cache_ttl
+        )
 
     async def _introspect(self, conn_model: ConnectionModel) -> SchemaInfo:
         driver = self._conn_service.get_driver(conn_model)
@@ -133,9 +191,9 @@ class SchemaService:
             logger.warning("Corrupt schema cache for %s, ignoring", key)
             return None
 
-    async def _write_cache(self, key: str, schema: SchemaInfo) -> None:
+    async def _write_cache(self, key: str, schema: SchemaInfo, ttl: int) -> None:
         data = _serialize_schema(schema)
-        await self._redis.setex(key, self._cache_ttl, orjson.dumps(data))
+        await self._redis.setex(key, ttl, orjson.dumps(data))
 
     async def _read_table_detail_cache(self, key: str) -> TableDetailInfo | None:
         raw = await self._redis.get(key)
@@ -148,9 +206,9 @@ class SchemaService:
             logger.warning("Corrupt schema detail cache for %s, ignoring", key)
             return None
 
-    async def _write_table_detail_cache(self, key: str, detail: TableDetailInfo) -> None:
+    async def _write_table_detail_cache(self, key: str, detail: TableDetailInfo, ttl: int) -> None:
         data = _serialize_table_detail(detail)
-        await self._redis.setex(key, self._cache_ttl, orjson.dumps(data))
+        await self._redis.setex(key, ttl, orjson.dumps(data))
 
 
 def _serialize_schema(schema: SchemaInfo) -> dict[str, object]:
@@ -380,6 +438,229 @@ def _ensure_sequence(value: object) -> list[object] | tuple[object, ...]:
 
 def _table_detail_cache_key(connection_id: str, schema_name: str, table_name: str) -> str:
     return f"{_DETAIL_CACHE_PREFIX}{connection_id}:{schema_name}:{table_name}"
+
+
+def _table_to_catalog_object(db_type: str, table: TableInfo) -> CatalogObjectInfo:
+    object_kind = _object_kind_for_engine(db_type)
+    data_type = table.columns[0].data_type if db_type == "redis" and table.columns else None
+    namespace = table.schema_name
+    name = table.table_name
+    return CatalogObjectInfo(
+        id=_encode_object_id(db_type, namespace, name),
+        kind=object_kind,
+        namespace=namespace,
+        name=name,
+        display_name=name,
+        data_type=data_type,
+        metadata={"schema_name": namespace, "table_name": name},
+    )
+
+
+def _encode_object_id(db_type: str, namespace: str, name: str) -> str:
+    payload = orjson.dumps(
+        {
+            "version": 1,
+            "engine": db_type,
+            "kind": _object_kind_for_engine(db_type),
+            "namespace": namespace,
+            "name": name,
+        }
+    )
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_object_id(object_id: str) -> CatalogObjectRef:
+    try:
+        padding = "=" * (-len(object_id) % 4)
+        decoded = base64.urlsafe_b64decode(f"{object_id}{padding}")
+        data = orjson.loads(decoded)
+        if not isinstance(data, dict):
+            raise TypeError
+        version = data["version"]
+        engine = data["engine"]
+        kind = data["kind"]
+        namespace = data["namespace"]
+        name = data["name"]
+        if (
+            version != 1
+            or not isinstance(engine, str)
+            or kind not in {"table", "key"}
+            or not isinstance(namespace, str)
+            or not isinstance(name, str)
+        ):
+            raise TypeError
+        return CatalogObjectRef(engine=engine, kind=kind, namespace=namespace, name=name)
+    except (binascii.Error, KeyError, TypeError, ValueError, orjson.JSONDecodeError) as exc:
+        raise NotFoundError("Catalog object", object_id) from exc
+
+
+def _validate_object_ref(ref: CatalogObjectRef, db_type: str, object_id: str) -> None:
+    if ref.engine != db_type or ref.kind != _object_kind_for_engine(db_type):
+        raise NotFoundError("Catalog object", object_id)
+
+
+def _object_kind_for_engine(db_type: str) -> CatalogObjectKind:
+    return "key" if db_type == "redis" else "table"
+
+
+def _engine_kind(db_type: str) -> str:
+    return get_database_engine(db_type).engine_kind
+
+
+def _object_sections(db_type: str, detail: TableDetailInfo) -> tuple[ObjectSectionInfo, ...]:
+    if db_type == "redis":
+        return (
+            ObjectSectionInfo(
+                id="key-info",
+                title="Key Info",
+                kind="redis_key",
+                description="Redis key type, TTL, and size metadata.",
+                properties=detail.metadata.properties,
+            ),
+            ObjectSectionInfo(
+                id="preview",
+                title="Preview Command",
+                kind="snippets",
+                description="Read command generated for this key type.",
+                snippets=(_preview_operation(db_type, detail.table),),
+            ),
+        )
+    if db_type == "dynamodb":
+        return (
+            ObjectSectionInfo(
+                id="attributes",
+                title="Attributes",
+                kind="attributes",
+                description="Known DynamoDB key and indexed attributes.",
+                columns=detail.table.columns,
+            ),
+            ObjectSectionInfo(
+                id="indexes",
+                title="Indexes",
+                kind="indexes",
+                description="Global and local secondary indexes for this table.",
+                indexes=detail.metadata.indexes,
+            ),
+            ObjectSectionInfo(
+                id="metadata",
+                title="Metadata",
+                kind="properties",
+                description="DynamoDB table settings and status.",
+                properties=detail.metadata.properties,
+            ),
+            ObjectSectionInfo(
+                id="snippets",
+                title="Snippets",
+                kind="snippets",
+                description="PartiQL starters for this table.",
+                snippets=tuple(_dynamodb_snippets(detail.table)),
+            ),
+        )
+    return (
+        ObjectSectionInfo(
+            id="schema",
+            title="Table Schema",
+            kind="attributes",
+            description="Columns and table structure.",
+            columns=detail.table.columns,
+        ),
+        ObjectSectionInfo(
+            id="relationships",
+            title="Relationships",
+            kind="relationships",
+            description="Foreign-key links around this table.",
+            relationships=detail.relationships,
+        ),
+        ObjectSectionInfo(
+            id="metadata",
+            title="Metadata",
+            kind="properties",
+            description="Indexes, constraints, enums, and engine metadata.",
+            indexes=detail.metadata.indexes,
+            properties=detail.metadata.properties,
+        ),
+        ObjectSectionInfo(
+            id="erd",
+            title="ERD",
+            kind="erd",
+            description="Local relationship graph.",
+            erd=detail.erd,
+        ),
+    )
+
+
+def _preview_operation(db_type: str, table: TableInfo) -> PreviewOperationInfo:
+    if db_type == "redis":
+        key_type = table.columns[0].data_type if table.columns else "unknown"
+        return PreviewOperationInfo(
+            label="Preview value",
+            language="redis-command",
+            text=_redis_preview_command(table.table_name, key_type),
+        )
+    if db_type == "dynamodb":
+        return PreviewOperationInfo(
+            label="Preview items",
+            language="partiql",
+            text=f"SELECT * FROM {_quote_identifier(table.table_name)} LIMIT 100;",
+        )
+    return PreviewOperationInfo(
+        label="Preview rows",
+        language="sql",
+        text=(
+            f"SELECT * FROM {_quote_identifier(table.schema_name)}."
+            f"{_quote_identifier(table.table_name)} LIMIT 100"
+        ),
+    )
+
+
+def _dynamodb_snippets(table: TableInfo) -> list[PreviewOperationInfo]:
+    table_name = _quote_identifier(table.table_name)
+    key_column = next((column.name for column in table.columns if column.is_primary_key), None)
+    snippets = [
+        PreviewOperationInfo(
+            label="Preview items",
+            language="partiql",
+            text=f"SELECT * FROM {table_name} LIMIT 100;",
+        )
+    ]
+    if key_column:
+        snippets.append(
+            PreviewOperationInfo(
+                label="Query by key",
+                language="partiql",
+                text=f"SELECT * FROM {table_name} WHERE {key_column} = ?;",
+            )
+        )
+    return snippets
+
+
+def _redis_preview_command(key: str, key_type: str) -> str:
+    key_arg = _quote_redis_arg(key)
+    match key_type:
+        case "string":
+            return f"GET {key_arg}"
+        case "hash":
+            return f"HSCAN {key_arg} 0 COUNT 100"
+        case "list":
+            return f"LRANGE {key_arg} 0 99"
+        case "set":
+            return f"SSCAN {key_arg} 0 COUNT 100"
+        case "zset":
+            return f"ZRANGE {key_arg} 0 99 WITHSCORES"
+        case "stream":
+            return f"XRANGE {key_arg} - + COUNT 100"
+        case _:
+            return f"TYPE {key_arg}"
+
+
+def _quote_identifier(value: str) -> str:
+    escaped = value.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def _quote_redis_arg(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def _find_table(schema: SchemaInfo, schema_name: str, table_name: str) -> TableInfo:

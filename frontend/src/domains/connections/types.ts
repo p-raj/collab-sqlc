@@ -12,6 +12,7 @@ export interface Connection {
   port: number;
   database: string;
   username: string;
+  config: Record<string, unknown> | null;
   ssl_enabled: boolean;
   has_ssl_certificates: boolean;
   has_ssl_ca: boolean;
@@ -38,6 +39,8 @@ export interface ConnectionCreateRequest {
   database: string;
   username: string;
   password: string;
+  config?: Record<string, unknown> | null;
+  credentials?: Record<string, unknown> | null;
   ssl_enabled?: boolean;
   ssl_ca?: string | null;
   ssl_cert?: string | null;
@@ -61,6 +64,8 @@ export interface ConnectionUpdateRequest {
   database?: string;
   username?: string;
   password?: string;
+  config?: Record<string, unknown> | null;
+  credentials?: Record<string, unknown> | null;
   ssl_enabled?: boolean;
   ssl_ca?: string | null;
   ssl_cert?: string | null;
@@ -83,6 +88,8 @@ export interface TestConnectionRequest {
   database: string;
   username: string;
   password: string;
+  config?: Record<string, unknown> | null;
+  credentials?: Record<string, unknown> | null;
   ssl_enabled?: boolean;
   ssl_ca?: string | null;
   ssl_cert?: string | null;

@@ -2,12 +2,21 @@ import { useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import type { Connection, DatabaseType } from "../types";
 import { DATABASE_ENGINE_IDS, getDatabaseEngine } from "../engine-registry";
 import * as connectionsApi from "../services/connections-api";
 import { useSchemaStore } from "@/domains/schema/hooks/use-schema-store";
+import { Badge } from "@/shared/components/ui/Badge";
+import { Button } from "@/shared/components/ui/Button";
+import { Checkbox } from "@/shared/components/ui/Checkbox";
+import { FileInput } from "@/shared/components/ui/FileInput";
+import { Field, FieldError, FieldHint, FieldLabel } from "@/shared/components/ui/Field";
+import { Input } from "@/shared/components/ui/Input";
+import { Panel } from "@/shared/components/ui/Panel";
+import { Select } from "@/shared/components/ui/Select";
+import { Textarea } from "@/shared/components/ui/Textarea";
 import { parseDbml } from "@/lib/dbml-parser";
 
 const SECURITY_MODES = ["insecure", "secure", "secure-with-certificates"] as const;
@@ -21,11 +30,12 @@ const MAX_CERTIFICATE_FILE_BYTES = 128 * 1024;
 const baseSchema = z.object({
   name: z.string().min(1, "Required"),
   db_type: z.enum(DATABASE_ENGINE_IDS),
-  host: z.string().min(1, "Required"),
+  host: z.string(),
   port: z.coerce.number().int().min(1).max(65535),
-  database: z.string().min(1, "Required"),
-  username: z.string().min(1, "Required"),
+  database: z.string(),
+  username: z.string(),
   password: z.string(),
+  session_token: z.string().optional(),
   security_mode: z.enum(SECURITY_MODES),
   ssl_ca: z.string().optional(),
   ssl_cert: z.string().optional(),
@@ -49,9 +59,60 @@ const DEFAULT_QUERY_TIMEOUT_SECONDS = 300;
 function buildSchema(requirePassword: boolean, hasStoredSslCa: boolean) {
   return baseSchema
     .extend({
-      password: requirePassword ? z.string().min(1, "Required") : z.string(),
+      password: z.string(),
     })
     .superRefine((data, ctx) => {
+      const isSql = getDatabaseEngine(data.db_type).engineKind === "sql";
+      if ((isSql || data.db_type === "redis") && !data.host.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["host"],
+          message: "Required",
+        });
+      }
+      if (isSql && !data.database.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["database"],
+          message: "Required",
+        });
+      }
+      if (isSql && !data.username.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["username"],
+          message: "Required",
+        });
+      }
+      if (isSql && requirePassword && !data.password.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["password"],
+          message: "Required",
+        });
+      }
+      if (data.db_type === "dynamodb" && !data.database.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["database"],
+          message: "Required",
+        });
+      }
+      if (data.db_type === "dynamodb" && !data.username.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["username"],
+          message: "Required",
+        });
+      }
+      if (data.db_type === "dynamodb" && requirePassword && !data.password.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["password"],
+          message: "Required",
+        });
+      }
+
       if (data.db_type !== "postgresql" && data.security_mode === "secure-with-certificates") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -158,6 +219,47 @@ function buildSslPayload(data: FormValues, connection?: Connection) {
   return sslPayload;
 }
 
+function buildEnginePayload(data: FormValues) {
+  if (data.db_type === "redis") {
+    return {
+      database: data.database.trim() || "0",
+      username: data.username.trim(),
+      password: data.password,
+      config: { database: Number(data.database.trim() || "0") },
+      credentials: data.password ? { password: data.password } : null,
+    };
+  }
+  if (data.db_type === "dynamodb") {
+    const credentials: Record<string, string> = {
+      access_key_id: data.username.trim(),
+      secret_access_key: data.password,
+    };
+    const sessionToken = data.session_token?.trim();
+    if (sessionToken) {
+      credentials.session_token = sessionToken;
+    }
+    const endpointUrl = data.host.trim();
+    return {
+      database: data.database.trim(),
+      username: data.username.trim(),
+      password: data.password,
+      config: {
+        region: data.database.trim(),
+        ...(endpointUrl && { endpoint_url: endpointUrl }),
+      },
+      credentials,
+    };
+  }
+
+  return {
+    database: data.database,
+    username: data.username,
+    password: data.password,
+    config: null,
+    credentials: null,
+  };
+}
+
 export function ConnectionForm({ connection, onSave, onCancel }: ConnectionFormProps) {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
@@ -187,6 +289,7 @@ export function ConnectionForm({ connection, onSave, onCancel }: ConnectionFormP
       database: connection?.database ?? "",
       username: connection?.username ?? "",
       password: "",
+      session_token: "",
       security_mode: getInitialSecurityMode(connection),
       ssl_ca: "",
       ssl_cert: "",
@@ -243,13 +346,18 @@ export function ConnectionForm({ connection, onSave, onCancel }: ConnectionFormP
 
     setIsSaving(true);
     try {
+      const enginePayload = buildEnginePayload(data);
+      const credentials =
+        connection && !enginePayload.password ? undefined : enginePayload.credentials;
       const base = {
         name: data.name,
         db_type: data.db_type,
         host: data.host,
         port: data.port,
-        database: data.database,
-        username: data.username,
+        database: enginePayload.database,
+        username: enginePayload.username,
+        config: enginePayload.config,
+        credentials,
         ...buildSslPayload(data, connection),
         ssh_enabled: data.ssh_enabled,
         ...(data.ssh_enabled && {
@@ -266,12 +374,12 @@ export function ConnectionForm({ connection, onSave, onCancel }: ConnectionFormP
       if (connection) {
         await connectionsApi.updateConnection(connection.id, {
           ...base,
-          ...(data.password && { password: data.password }),
+          ...(enginePayload.password && { password: enginePayload.password }),
         });
         useSchemaStore.getState().clearForConnection(connection.id);
         toast.success("Connection updated");
       } else {
-        await connectionsApi.createConnection({ ...base, password: data.password });
+        await connectionsApi.createConnection({ ...base, password: enginePayload.password });
         toast.success("Connection created");
       }
       onSave();
@@ -310,6 +418,8 @@ export function ConnectionForm({ connection, onSave, onCancel }: ConnectionFormP
         database: v.database,
         username: v.username,
         password: v.password,
+        config: buildEnginePayload(v).config,
+        credentials: buildEnginePayload(v).credentials,
         ...buildSslPayload(v, connection),
       });
       setTestResult(result);
@@ -337,301 +447,352 @@ export function ConnectionForm({ connection, onSave, onCancel }: ConnectionFormP
     }
   }
 
-  const inputClass =
-    "h-7 w-full rounded border border-input bg-transparent px-2 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring";
-  const labelClass = "text-xs text-muted-foreground";
-  const errorClass = "text-[0.75rem] text-red-400";
+  const databaseLabel =
+    dbType === "redis" ? "Database index" : dbType === "dynamodb" ? "Region" : "Database";
+  const databasePlaceholder =
+    dbType === "redis" ? "0" : dbType === "dynamodb" ? "us-east-1" : "mydb";
+  const usernameLabel =
+    dbType === "redis"
+      ? "Username (optional)"
+      : dbType === "dynamodb"
+        ? "Access key ID"
+        : "Username";
+  const passwordLabel =
+    dbType === "redis"
+      ? "Password (optional)"
+      : dbType === "dynamodb"
+        ? "Secret access key"
+        : "Password";
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-2">
       {/* Name */}
-      <div className="flex flex-col gap-0.5">
-        <label className={labelClass}>Name</label>
-        <input {...register("name")} placeholder="My Database" className={inputClass} />
-        {errors.name && <span className={errorClass}>{errors.name.message}</span>}
-      </div>
+      <Field>
+        <FieldLabel htmlFor="connection-name">Name</FieldLabel>
+        <Input
+          id="connection-name"
+          {...register("name")}
+          placeholder="My Database"
+          size="sm"
+        />
+        <FieldError>{errors.name?.message}</FieldError>
+      </Field>
 
       {/* Type */}
-      <div className="flex flex-col gap-0.5">
-        <label className={labelClass}>Type</label>
+      <Field>
+        <FieldLabel htmlFor="connection-type">Type</FieldLabel>
         <Controller
           control={control}
           name="db_type"
           render={({ field }) => (
-            <select
+            <Select
+              id="connection-type"
               {...field}
               onChange={(e) => {
                 const dbType = e.target.value as DatabaseType;
                 field.onChange(dbType);
                 setValue("port", getDatabaseEngine(dbType).defaultPort);
                 setValue("security_mode", "insecure");
+                if (dbType === "redis") {
+                  setValue("database", "0");
+                  setValue("username", "");
+                  setValue("password", "");
+                }
+                if (dbType === "dynamodb") {
+                  setValue("host", "");
+                  setValue("database", "");
+                  setValue("username", "");
+                  setValue("password", "");
+                  setValue("session_token", "");
+                }
               }}
-              className={inputClass}
+              size="sm"
             >
               {DATABASE_ENGINE_IDS.map((dbType) => (
                 <option key={dbType} value={dbType}>
                   {getDatabaseEngine(dbType).label}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
         />
-      </div>
+        <FieldError>{errors.db_type?.message}</FieldError>
+      </Field>
 
       {/* Host + Port */}
       <div className="flex gap-2">
-        <div className="flex flex-1 flex-col gap-0.5">
-          <label className={labelClass}>Host</label>
-          <input {...register("host")} placeholder="localhost" className={inputClass} />
-          {errors.host && <span className={errorClass}>{errors.host.message}</span>}
-        </div>
-        <div className="flex w-20 flex-col gap-0.5">
-          <label className={labelClass}>Port</label>
-          <input {...register("port")} type="number" className={inputClass} />
-          {errors.port && <span className={errorClass}>{errors.port.message}</span>}
-        </div>
+        <Field className="flex-1">
+          <FieldLabel htmlFor="connection-host">
+            {dbType === "dynamodb" ? "Endpoint URL (optional)" : "Host"}
+          </FieldLabel>
+          <Input
+            id="connection-host"
+            {...register("host")}
+            placeholder={dbType === "dynamodb" ? "http://localhost:8000" : "localhost"}
+            size="sm"
+          />
+          <FieldError>{errors.host?.message}</FieldError>
+        </Field>
+        {dbType !== "dynamodb" && (
+          <Field className="w-20">
+            <FieldLabel htmlFor="connection-port">Port</FieldLabel>
+            <Input id="connection-port" {...register("port")} type="number" size="sm" />
+            <FieldError>{errors.port?.message}</FieldError>
+          </Field>
+        )}
       </div>
 
       {/* Database */}
-      <div className="flex flex-col gap-0.5">
-        <label className={labelClass}>Database</label>
-        <input {...register("database")} placeholder="mydb" className={inputClass} />
-        {errors.database && <span className={errorClass}>{errors.database.message}</span>}
-      </div>
+      <Field>
+        <FieldLabel htmlFor="connection-database">{databaseLabel}</FieldLabel>
+        <Input
+          id="connection-database"
+          {...register("database")}
+          placeholder={databasePlaceholder}
+          size="sm"
+        />
+        <FieldError>{errors.database?.message}</FieldError>
+      </Field>
 
       {/* Username + Password */}
       <div className="flex gap-2">
-        <div className="flex flex-1 flex-col gap-0.5">
-          <label className={labelClass}>Username</label>
-          <input {...register("username")} placeholder="postgres" className={inputClass} />
-          {errors.username && <span className={errorClass}>{errors.username.message}</span>}
-        </div>
-        <div className="flex flex-1 flex-col gap-0.5">
-          <label className={labelClass}>
-            Password
+        <Field className="flex-1">
+          <FieldLabel htmlFor="connection-username">{usernameLabel}</FieldLabel>
+          <Input
+            id="connection-username"
+            {...register("username")}
+            placeholder={dbType === "redis" ? "" : dbType === "dynamodb" ? "AKIA..." : "postgres"}
+            size="sm"
+          />
+          <FieldError>{errors.username?.message}</FieldError>
+        </Field>
+        <Field className="flex-1">
+          <FieldLabel htmlFor="connection-password">
+            {passwordLabel}
             {connection && (
               <span className="ml-1 font-normal text-muted-foreground">(leave blank to keep)</span>
             )}
-          </label>
-          <input
+          </FieldLabel>
+          <Input
+            id="connection-password"
             {...register("password")}
             type="password"
             placeholder={connection ? "••••••••" : ""}
-            className={inputClass}
+            size="sm"
           />
-          {errors.password && <span className={errorClass}>{errors.password.message}</span>}
-        </div>
+          <FieldError>{errors.password?.message}</FieldError>
+        </Field>
       </div>
 
-      <div className="flex flex-col gap-1 rounded border border-input p-2">
-        <div className="flex flex-col gap-0.5">
-          <label className={labelClass}>Security</label>
-          <select {...register("security_mode")} className={inputClass}>
-            <option value="insecure">
-              {dbType === "clickhouse" ? "Insecure (HTTP)" : "Insecure"}
-            </option>
-            <option value="secure">
-              {dbType === "clickhouse" ? "Secure (HTTPS)" : "Secure (TLS only)"}
-            </option>
-            {dbType === "postgresql" && (
-              <option value="secure-with-certificates">Secure with certificates</option>
-            )}
-          </select>
-          <p className="text-[0.75rem] text-muted-foreground">
-            {dbType === "clickhouse"
-              ? "ClickHouse stays insecure by default; choose secure to pass TLS to the client."
-              : "PostgreSQL stays insecure by default. TLS only encrypts traffic; certificates add CA validation and optional client authentication."}
-          </p>
-          {errors.security_mode && (
-            <span className={errorClass}>{errors.security_mode.message}</span>
+      {dbType === "dynamodb" && (
+        <Field>
+          <FieldLabel htmlFor="connection-session-token">Session token (optional)</FieldLabel>
+          <Input
+            id="connection-session-token"
+            {...register("session_token")}
+            type="password"
+            size="sm"
+          />
+        </Field>
+      )}
+
+      {dbType !== "dynamodb" && (
+        <Panel padding="sm" className="flex flex-col gap-1">
+          <Field>
+            <FieldLabel htmlFor="connection-security-mode">Security</FieldLabel>
+            <Select id="connection-security-mode" {...register("security_mode")} size="sm">
+              <option value="insecure">
+                {dbType === "clickhouse" ? "Insecure (HTTP)" : "Insecure"}
+              </option>
+              <option value="secure">
+                {dbType === "clickhouse" ? "Secure (HTTPS)" : "Secure (TLS only)"}
+              </option>
+              {dbType === "postgresql" && (
+                <option value="secure-with-certificates">Secure with certificates</option>
+              )}
+            </Select>
+            <FieldHint>
+              {dbType === "clickhouse"
+                ? "ClickHouse stays insecure by default; choose secure to pass TLS to the client."
+                : "PostgreSQL stays insecure by default. TLS only encrypts traffic; certificates add CA validation and optional client authentication."}
+            </FieldHint>
+            <FieldError>{errors.security_mode?.message}</FieldError>
+          </Field>
+
+          {dbType === "postgresql" && securityMode === "secure-with-certificates" && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {(Object.keys(CERTIFICATE_FIELDS) as CertificateField[]).map((field) => (
+                <Field key={field}>
+                  <FieldLabel>{CERTIFICATE_FIELDS[field]}</FieldLabel>
+                  <FileInput
+                    accept=".crt,.cert,.pem,.key"
+                    onChange={(event) => {
+                      void handleCertificateFile(field, event.target.files?.[0]);
+                    }}
+                  />
+                </Field>
+              ))}
+              {connection?.has_ssl_ca && (
+                <FieldHint className="sm:col-span-3">
+                  Stored CA certificate will be kept unless you upload a replacement.
+                </FieldHint>
+              )}
+              {connection?.has_ssl_client_certificates && (
+                <label className="sm:col-span-3 flex items-center gap-1.5 text-[0.75rem] text-muted-foreground">
+                  <Checkbox {...register("clear_stored_client_certificates")} />
+                  Remove stored client certificate and key
+                </label>
+              )}
+              <FieldError className="sm:col-span-3">{errors.ssl_ca?.message}</FieldError>
+              <FieldError className="sm:col-span-3">{errors.ssl_cert?.message}</FieldError>
+            </div>
           )}
-        </div>
-
-        {dbType === "postgresql" && securityMode === "secure-with-certificates" && (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {(Object.keys(CERTIFICATE_FIELDS) as CertificateField[]).map((field) => (
-              <div key={field} className="flex flex-col gap-0.5">
-                <label className={labelClass}>{CERTIFICATE_FIELDS[field]}</label>
-                <input
-                  type="file"
-                  accept=".crt,.cert,.pem,.key"
-                  onChange={(event) => {
-                    void handleCertificateFile(field, event.target.files?.[0]);
-                  }}
-                  className="w-full text-[0.75rem] text-muted-foreground file:mr-2 file:h-6 file:rounded file:border-0 file:bg-accent file:px-2 file:text-[0.75rem] file:text-foreground"
-                />
-              </div>
-            ))}
-            {connection?.has_ssl_ca && (
-              <p className="sm:col-span-3 text-[0.75rem] text-muted-foreground">
-                Stored CA certificate will be kept unless you upload a replacement.
-              </p>
-            )}
-            {connection?.has_ssl_client_certificates && (
-              <label className="sm:col-span-3 flex items-center gap-1.5 text-[0.75rem] text-muted-foreground">
-                <input
-                  {...register("clear_stored_client_certificates")}
-                  type="checkbox"
-                  className="h-3 w-3"
-                />
-                Remove stored client certificate and key
-              </label>
-            )}
-            {errors.ssl_ca && (
-              <span className={`sm:col-span-3 ${errorClass}`}>{errors.ssl_ca.message}</span>
-            )}
-            {errors.ssl_cert && (
-              <span className={`sm:col-span-3 ${errorClass}`}>{errors.ssl_cert.message}</span>
-            )}
-          </div>
-        )}
-        {!canTestStoredCertificateMode && (
-          <p className="text-[0.75rem] text-muted-foreground">
-            Re-upload the CA certificate and any client certificate/key you want to test. Saved
-            certificates are only reused when you save the connection.
-          </p>
-        )}
-      </div>
+          {!canTestStoredCertificateMode && (
+            <FieldHint>
+              Re-upload the CA certificate and any client certificate/key you want to test. Saved
+              certificates are only reused when you save the connection.
+            </FieldHint>
+          )}
+        </Panel>
+      )}
 
       {/* SSH Tunnel */}
       <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <input {...register("ssh_enabled")} type="checkbox" className="h-3 w-3" />
+        <Checkbox {...register("ssh_enabled")} />
         SSH Tunnel
       </label>
 
       {sshEnabled && (
-        <div className="flex flex-col gap-2 rounded border border-input p-2">
+        <Panel padding="sm" className="flex flex-col gap-2">
           <div className="flex gap-2">
-            <div className="flex flex-1 flex-col gap-0.5">
-              <label className={labelClass}>SSH Host</label>
-              <input {...register("ssh_host")} className={inputClass} />
-            </div>
-            <div className="flex w-20 flex-col gap-0.5">
-              <label className={labelClass}>SSH Port</label>
-              <input {...register("ssh_port")} type="number" className={inputClass} />
-            </div>
+            <Field className="flex-1">
+              <FieldLabel htmlFor="connection-ssh-host">SSH Host</FieldLabel>
+              <Input id="connection-ssh-host" {...register("ssh_host")} size="sm" />
+            </Field>
+            <Field className="w-20">
+              <FieldLabel htmlFor="connection-ssh-port">SSH Port</FieldLabel>
+              <Input id="connection-ssh-port" {...register("ssh_port")} type="number" size="sm" />
+            </Field>
           </div>
-          <div className="flex flex-col gap-0.5">
-            <label className={labelClass}>SSH Username</label>
-            <input {...register("ssh_username")} className={inputClass} />
-          </div>
-          <div className="flex flex-col gap-0.5">
-            <label className={labelClass}>
+          <Field>
+            <FieldLabel htmlFor="connection-ssh-username">SSH Username</FieldLabel>
+            <Input id="connection-ssh-username" {...register("ssh_username")} size="sm" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="connection-ssh-private-key">
               SSH Private Key
               {connection && (
                 <span className="ml-1 font-normal text-muted-foreground">
                   (leave blank to keep)
                 </span>
               )}
-            </label>
-            <textarea
+            </FieldLabel>
+            <Textarea
+              id="connection-ssh-private-key"
               {...register("ssh_private_key")}
               rows={3}
-              className="w-full rounded border border-input bg-transparent px-2 py-1 text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+              mono
             />
-          </div>
-        </div>
+          </Field>
+        </Panel>
       )}
 
-      <div className="flex flex-col gap-0.5">
-        <label className={labelClass}>Query Timeout (seconds)</label>
-        <input
+      <Field>
+        <FieldLabel htmlFor="connection-query-timeout">Query Timeout (seconds)</FieldLabel>
+        <Input
+          id="connection-query-timeout"
           {...register("query_timeout_seconds")}
           type="number"
           min={1}
           max={3600}
-          className={inputClass}
+          size="sm"
         />
-        {errors.query_timeout_seconds && (
-          <span className={errorClass}>{errors.query_timeout_seconds.message}</span>
-        )}
-      </div>
+        <FieldError>{errors.query_timeout_seconds?.message}</FieldError>
+      </Field>
 
       {/* DBML Schema Context */}
-      <button
+      <Button
         type="button"
         onClick={() => setDbmlExpanded(!dbmlExpanded)}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        variant="ghost"
+        size="xs"
+        className="w-fit"
       >
         {dbmlExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         Schema Context (DBML)
         {dbmlParsed && (
-          <span className="rounded bg-accent px-1 text-[0.75rem]">
+          <Badge>
             {Object.keys((dbmlParsed as { tables?: Record<string, unknown> }).tables ?? {}).length}{" "}
             table(s)
-          </span>
+          </Badge>
         )}
-      </button>
+      </Button>
 
       {dbmlExpanded && (
-        <div className="flex flex-col gap-1.5 rounded border border-input p-2">
-          <p className="text-[0.75rem] text-muted-foreground">
+        <Panel padding="sm" className="flex flex-col gap-1.5">
+          <FieldHint>
             Paste DBML to provide schema context for the AI assistant.
-          </p>
-          <textarea
+          </FieldHint>
+          <Textarea
             value={dbmlText}
             onChange={(e) => setDbmlText(e.target.value)}
             placeholder={`Table users {\n  id integer [pk]\n  name varchar\n}`}
             rows={5}
-            className="w-full resize-y rounded border border-input bg-transparent px-2 py-1 text-xs font-mono placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+            mono
+            className="resize-y"
           />
-          {dbmlError && <span className="text-[0.75rem] text-red-400">{dbmlError}</span>}
-          <button
+          <FieldError>{dbmlError}</FieldError>
+          <Button
             type="button"
             onClick={handleParseDbml}
-            className="flex h-6 w-fit items-center gap-1 rounded border border-input px-2 text-[0.75rem] text-muted-foreground hover:bg-accent"
+            size="xs"
+            className="w-fit"
           >
             Parse DBML
-          </button>
-        </div>
+          </Button>
+        </Panel>
       )}
 
       {/* Shared with team */}
       <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <input {...register("is_shared")} type="checkbox" className="h-3 w-3" />
+        <Checkbox {...register("is_shared")} />
         Shared with team
       </label>
 
       {/* Test result */}
       {testResult && (
-        <div
-          className={`rounded border px-2 py-1 text-xs ${
-            testResult.success
-              ? "border-foreground/20 text-foreground"
-              : "border-red-400/30 text-red-400"
-          }`}
-        >
+        <Panel padding="sm" className={testResult.success ? "text-foreground" : "text-destructive"}>
           {testResult.message}
-        </div>
+        </Panel>
       )}
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">
-        <button
+        <Button
           type="button"
           onClick={handleTest}
-          disabled={isTesting || !canTestStoredCertificateMode}
-          className="flex h-7 items-center gap-1 rounded border border-input px-2 text-xs text-muted-foreground hover:bg-accent disabled:opacity-50"
+          loading={isTesting}
+          disabled={!canTestStoredCertificateMode}
+          size="sm"
         >
-          {isTesting && <Loader2 size={12} className="animate-spin" />}
           Test Connection
-        </button>
+        </Button>
         <div className="flex-1" />
-        <button
+        <Button
           type="button"
           onClick={onCancel}
-          className="h-7 rounded border border-input px-3 text-xs text-muted-foreground hover:bg-accent"
+          size="sm"
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="submit"
-          disabled={isSaving}
-          className="flex h-7 items-center gap-1 rounded bg-foreground px-3 text-xs text-background hover:bg-foreground/90 disabled:opacity-50"
+          loading={isSaving}
+          variant="primary"
+          size="sm"
         >
-          {isSaving && <Loader2 size={12} className="animate-spin" />}
           {connection ? "Update" : "Create"}
-        </button>
+        </Button>
       </div>
     </form>
   );

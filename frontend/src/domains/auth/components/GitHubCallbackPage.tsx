@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
+import { ErrorState } from "@/shared/components/ui/DataState";
+import { Panel } from "@/shared/components/ui/Panel";
 import { useAuthStore } from "../hooks/use-auth-store";
 import * as authApi from "../services/auth-api";
 
@@ -43,17 +45,15 @@ export default function GitHubCallbackPage() {
   if (error) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <div className="w-full max-w-sm space-y-4 rounded-lg border border-border bg-card p-8 text-center">
-          <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </div>
+        <Panel className="w-full max-w-sm space-y-4 rounded-lg p-8 text-center">
+          <ErrorState message={error} className="p-0 text-left" />
           <Link
             to="/login"
             className="inline-flex h-9 items-center justify-center rounded-md border border-input px-4 text-sm font-medium transition-colors hover:bg-accent"
           >
             Back to login
           </Link>
-        </div>
+        </Panel>
       </div>
     );
   }

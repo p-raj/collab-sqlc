@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
 from src.connections.drivers.clickhouse import ClickHouseDriver
+from src.connections.drivers.dynamodb_driver import DynamoDBDriver
 from src.connections.drivers.postgres import PostgresDriver
+from src.connections.drivers.redis_driver import RedisDriver
 from src.shared.dialect.clickhouse import ClickHouseDialect
 from src.shared.dialect.postgres import PostgresDialect
 
@@ -20,6 +22,12 @@ class EngineCapabilities:
     explain: bool
     cancel: bool
     streaming: bool
+    catalog: bool = True
+    write_guard: bool = True
+    format: bool = True
+    export: bool = True
+    result_shapes: tuple[str, ...] = ("tabular",)
+    languages: tuple[str, ...] = ("sql",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +58,7 @@ class EnginePlugin:
 
     id: str
     label: str
+    engine_kind: Literal["sql", "redis", "dynamodb"]
     default_port: int
     sqlglot_dialect: str
     driver_factory: type[DatabaseDriver]
@@ -85,6 +94,7 @@ DATABASE_ENGINES: Final[dict[str, EnginePlugin]] = {
     "postgresql": EnginePlugin(
         id="postgresql",
         label="PostgreSQL",
+        engine_kind="sql",
         default_port=5432,
         sqlglot_dialect="postgres",
         driver_factory=PostgresDriver,
@@ -105,6 +115,7 @@ DATABASE_ENGINES: Final[dict[str, EnginePlugin]] = {
     "clickhouse": EnginePlugin(
         id="clickhouse",
         label="ClickHouse",
+        engine_kind="sql",
         default_port=8123,
         sqlglot_dialect="clickhouse",
         driver_factory=ClickHouseDriver,
@@ -121,6 +132,60 @@ DATABASE_ENGINES: Final[dict[str, EnginePlugin]] = {
         ),
         parameter_binding=ParameterBindingProfile(placeholder_style="pyformat_named"),
         driver_errors=DriverErrorProfile(module_markers=("clickhouse",)),
+    ),
+    "redis": EnginePlugin(
+        id="redis",
+        label="Redis",
+        engine_kind="redis",
+        default_port=6379,
+        sqlglot_dialect="",
+        driver_factory=RedisDriver,
+        dialect=_POSTGRES_DIALECT,
+        capabilities=EngineCapabilities(
+            explain=False,
+            cancel=False,
+            streaming=False,
+            catalog=True,
+            write_guard=True,
+            format=False,
+            export=True,
+            result_shapes=("scalar", "list", "key_value"),
+            languages=("redis-command",),
+        ),
+        explain=ExplainProfile(
+            prefix="",
+            wraps_in_rollback=False,
+            output_kind="text",
+        ),
+        parameter_binding=ParameterBindingProfile(placeholder_style="pyformat_named"),
+        driver_errors=DriverErrorProfile(module_markers=("redis",)),
+    ),
+    "dynamodb": EnginePlugin(
+        id="dynamodb",
+        label="DynamoDB",
+        engine_kind="dynamodb",
+        default_port=443,
+        sqlglot_dialect="",
+        driver_factory=DynamoDBDriver,
+        dialect=_POSTGRES_DIALECT,
+        capabilities=EngineCapabilities(
+            explain=False,
+            cancel=False,
+            streaming=False,
+            catalog=True,
+            write_guard=True,
+            format=False,
+            export=True,
+            result_shapes=("document", "tabular"),
+            languages=("partiql",),
+        ),
+        explain=ExplainProfile(
+            prefix="",
+            wraps_in_rollback=False,
+            output_kind="text",
+        ),
+        parameter_binding=ParameterBindingProfile(placeholder_style="pyformat_named"),
+        driver_errors=DriverErrorProfile(module_markers=("boto3", "botocore")),
     ),
 }
 

@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useReducer, useState } from "react";
-import { RefreshCw, Loader2, ChevronLeft, ChevronRight, UserPlus, Copy, X } from "lucide-react";
+import { RefreshCw, ChevronLeft, ChevronRight, UserPlus, Copy, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/domains/auth/hooks/use-auth-store";
+import { Button } from "@/shared/components/ui/Button";
+import { Callout } from "@/shared/components/ui/Callout";
+import { Checkbox } from "@/shared/components/ui/Checkbox";
+import { EmptyState, ErrorState, LoadingState } from "@/shared/components/ui/DataState";
+import { Field, FieldLabel } from "@/shared/components/ui/Field";
+import { IconButton } from "@/shared/components/ui/IconButton";
+import { Input } from "@/shared/components/ui/Input";
+import { Panel } from "@/shared/components/ui/Panel";
+import { Select } from "@/shared/components/ui/Select";
+import { TabButton, TabsRoot } from "@/shared/components/ui/Tabs";
 import {
   fetchAuditLogs,
   fetchUsers,
@@ -170,11 +180,7 @@ function UsersTab() {
   }, []);
 
   if (error) {
-    return (
-      <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-        {error}
-      </div>
-    );
+    return <ErrorState message={error} className="p-0" />;
   }
 
   return (
@@ -185,79 +191,74 @@ function UsersTab() {
           {users.length} user{users.length !== 1 ? "s" : ""}
         </span>
         <div className="flex items-center gap-2">
-          <button
+          <Button
             onClick={() => {
               setShowInviteForm((p) => !p);
               setLastInviteUrl(null);
             }}
-            className="inline-flex h-7 items-center gap-1 rounded border border-input px-2.5 text-xs hover:bg-accent"
+            leftIcon={<UserPlus size={12} />}
           >
-            <UserPlus size={12} />
             Invite User
-          </button>
-          <button
-            onClick={loadData}
-            disabled={isLoading}
-            className="inline-flex h-7 items-center gap-1 rounded border border-input px-2.5 text-xs hover:bg-accent disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
+          </Button>
+          <Button onClick={loadData} loading={isLoading} leftIcon={<RefreshCw size={12} />}>
             Refresh
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Invite form */}
       {showInviteForm && (
-        <div className="rounded border border-border bg-muted/30 p-3 space-y-2">
+        <Panel className="space-y-2 rounded p-3">
           <div className="flex items-end gap-2">
-            <div className="flex-1 space-y-1">
-              <label className="text-xs font-medium">Email</label>
-              <input
+            <Field className="flex-1">
+              <FieldLabel>Email</FieldLabel>
+              <Input
                 type="email"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="user@example.com"
-                className="flex h-8 w-full rounded border border-input bg-transparent px-2 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+                size="md"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void handleInvite();
                 }}
               />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Role</label>
-              <select
+            </Field>
+            <Field>
+              <FieldLabel>Role</FieldLabel>
+              <Select
                 value={inviteRole}
                 onChange={(e) => setInviteRole(e.target.value as UserRole)}
-                className="flex h-8 rounded border border-input bg-transparent px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                size="md"
               >
                 <option value="viewer">viewer</option>
                 <option value="editor">editor</option>
                 <option value="admin">admin</option>
-              </select>
-            </div>
-            <button
+              </Select>
+            </Field>
+            <Button
               onClick={() => void handleInvite()}
-              disabled={inviteLoading || !inviteEmail.trim()}
-              className="inline-flex h-8 items-center rounded bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              variant="primary"
+              size="md"
+              loading={inviteLoading}
+              disabled={!inviteEmail.trim()}
             >
               {inviteLoading ? "Sending..." : "Send Invite"}
-            </button>
+            </Button>
           </div>
           {lastInviteUrl && (
-            <div className="flex items-center gap-2 rounded border border-green-500/30 bg-green-500/10 px-2 py-1.5">
-              <span className="flex-1 truncate text-xs text-green-700 dark:text-green-400">
-                {lastInviteUrl}
-              </span>
-              <button
-                onClick={() => copyInviteUrl(lastInviteUrl)}
-                className="shrink-0 rounded p-1 hover:bg-green-500/20"
-                title="Copy invite link"
-              >
-                <Copy size={12} />
-              </button>
-            </div>
+            <Callout tone="success" icon={null} className="py-1.5">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 truncate text-xs text-success">{lastInviteUrl}</span>
+                <IconButton
+                  aria-label="Copy invite link"
+                  onClick={() => copyInviteUrl(lastInviteUrl)}
+                  icon={<Copy size={12} />}
+                  title="Copy invite link"
+                />
+              </div>
+            </Callout>
           )}
-        </div>
+        </Panel>
       )}
 
       {/* Pending invites */}
@@ -285,14 +286,15 @@ function UsersTab() {
                       {new Date(inv.expires_at).toLocaleDateString()}
                     </td>
                     <td className="px-3 py-1.5 text-right">
-                      <button
+                      <Button
                         onClick={() => void handleRevokeInvite(inv.id)}
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-destructive hover:bg-destructive/10"
+                        variant="danger"
+                        size="xs"
+                        leftIcon={<X size={10} />}
                         title="Revoke invite"
                       >
-                        <X size={10} />
                         Revoke
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -323,45 +325,44 @@ function UsersTab() {
                   <td className="px-3 py-1.5">{user.display_name}</td>
                   <td className="px-3 py-1.5 text-muted-foreground">{user.email}</td>
                   <td className="px-3 py-1.5">
-                    <select
+                    <Select
                       value={user.role}
                       disabled={isSelf}
                       onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
-                      className="h-6 rounded border border-input bg-transparent px-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                      size="xs"
                     >
                       <option value="admin">admin</option>
                       <option value="editor">editor</option>
                       <option value="viewer">viewer</option>
-                    </select>
+                    </Select>
                   </td>
                   <td className="px-3 py-1.5">
                     {user.secret_key ? (
-                      <button
+                      <Button
                         onClick={() => {
                           navigator.clipboard.writeText(user.secret_key!);
                           toast.success("Secret key copied");
                         }}
-                        className="inline-flex items-center gap-1 rounded border border-input px-1.5 py-0.5 font-mono text-xs text-muted-foreground hover:bg-accent"
+                        size="xs"
+                        leftIcon={<Copy size={10} />}
+                        className="font-mono"
                         title="Click to copy"
                       >
                         {user.secret_key}
-                        <Copy size={10} />
-                      </button>
+                      </Button>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
                   <td className="px-3 py-1.5">
-                    <button
+                    <Button
                       disabled={isSelf}
                       onClick={() => handleToggleActive(user.id, user.is_active)}
-                      className={`inline-flex h-6 items-center rounded border px-2 text-xs disabled:opacity-50 ${user.is_active
-                          ? "border-green-500/30 bg-green-500/10 text-green-600"
-                          : "border-red-500/30 bg-red-500/10 text-red-600"
-                        }`}
+                      size="xs"
+                      variant={user.is_active ? "secondary" : "danger"}
                     >
                       {user.is_active ? "Active" : "Inactive"}
-                    </button>
+                    </Button>
                   </td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-muted-foreground">
                     {new Date(user.created_at).toLocaleDateString()}
@@ -372,14 +373,14 @@ function UsersTab() {
             {isLoading && (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center">
-                  <Loader2 size={16} className="mx-auto animate-spin text-muted-foreground" />
+                  <LoadingState label="Loading users" />
                 </td>
               </tr>
             )}
             {users.length === 0 && !isLoading && (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
-                  No users found
+                <td colSpan={6} className="px-3 py-8">
+                  <EmptyState title="No users found" />
                 </td>
               </tr>
             )}
@@ -433,26 +434,17 @@ function SettingsTab() {
   }, [ssoEnabled, ssoOnlyMode]);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 size={16} className="animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <LoadingState label="Loading settings" className="py-12" />;
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h3 className="mb-3 text-sm font-semibold">GitHub SSO</h3>
-        <div className="space-y-4 rounded border border-border p-4">
+        <Panel className="space-y-4 rounded p-4">
           {/* Enable SSO */}
           <label className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              checked={ssoEnabled}
-              onChange={(e) => setSsoEnabled(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
+            <Checkbox checked={ssoEnabled} onChange={(e) => setSsoEnabled(e.target.checked)} />
             <div>
               <span className="text-sm font-medium">Enable GitHub SSO</span>
               <p className="text-xs text-muted-foreground">Allow users to sign in with GitHub</p>
@@ -461,12 +453,10 @@ function SettingsTab() {
 
           {/* SSO-only mode */}
           <label className="flex items-center gap-3">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={ssoOnlyMode}
               onChange={(e) => setSsoOnlyMode(e.target.checked)}
               disabled={!ssoEnabled}
-              className="h-4 w-4 rounded border-input disabled:opacity-50"
             />
             <div>
               <span className="text-sm font-medium">SSO-only mode</span>
@@ -480,14 +470,10 @@ function SettingsTab() {
             GitHub Client ID and Secret are configured via environment variables.
           </p>
 
-          <button
-            onClick={() => void handleSave()}
-            disabled={saving}
-            className="inline-flex h-8 items-center rounded bg-primary px-4 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
+          <Button onClick={() => void handleSave()} variant="primary" size="md" loading={saving}>
             {saving ? "Saving..." : "Save SSO Settings"}
-          </button>
-        </div>
+          </Button>
+        </Panel>
       </div>
     </div>
   );
@@ -531,35 +517,29 @@ export default function AdminPage() {
   return (
     <div className="flex min-h-[60vh] flex-col overflow-hidden">
       {/* Tabs */}
-      <div className="mb-4 flex items-center gap-4 border-b">
-        <button
+      <TabsRoot className="mb-4 gap-4 border-b">
+        <TabButton
           onClick={() => setActiveTab("audit")}
-          className={`pb-2 text-sm font-medium ${activeTab === "audit"
-              ? "border-b-2 border-foreground text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-            }`}
+          active={activeTab === "audit"}
+          className="h-auto pb-2 text-sm"
         >
           Audit Logs
-        </button>
-        <button
+        </TabButton>
+        <TabButton
           onClick={() => setActiveTab("users")}
-          className={`pb-2 text-sm font-medium ${activeTab === "users"
-              ? "border-b-2 border-foreground text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-            }`}
+          active={activeTab === "users"}
+          className="h-auto pb-2 text-sm"
         >
           Users
-        </button>
-        <button
+        </TabButton>
+        <TabButton
           onClick={() => setActiveTab("settings")}
-          className={`pb-2 text-sm font-medium ${activeTab === "settings"
-              ? "border-b-2 border-foreground text-foreground"
-              : "text-muted-foreground hover:text-foreground"
-            }`}
+          active={activeTab === "settings"}
+          className="h-auto pb-2 text-sm"
         >
           Settings
-        </button>
-      </div>
+        </TabButton>
+      </TabsRoot>
 
       {activeTab === "settings" && <SettingsTab />}
       {activeTab === "users" && <UsersTab />}
@@ -570,44 +550,35 @@ export default function AdminPage() {
             <span className="text-xs text-muted-foreground">
               {state.total} total log{state.total !== 1 ? "s" : ""}
             </span>
-            <button
-              onClick={loadLogs}
-              disabled={state.isLoading}
-              className="inline-flex h-7 items-center gap-1 rounded border border-input px-2.5 text-xs hover:bg-accent disabled:opacity-50"
-            >
-              <RefreshCw size={12} className={state.isLoading ? "animate-spin" : ""} />
+            <Button onClick={loadLogs} loading={state.isLoading} leftIcon={<RefreshCw size={12} />}>
               Refresh
-            </button>
+            </Button>
           </div>
 
           {/* Filters */}
           <div className="mb-3 flex flex-wrap gap-2">
-            <input
+            <Input
               type="text"
               placeholder="Filter by action..."
               value={state.filters.action ?? ""}
               onChange={(e) =>
                 dispatch({ type: "SET_FILTER", key: "action", value: e.target.value })
               }
-              className="h-7 rounded border border-input bg-transparent px-2 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+              size="sm"
             />
-            <input
+            <Input
               type="text"
               placeholder="Filter by resource..."
               value={state.filters.resource_type ?? ""}
               onChange={(e) =>
                 dispatch({ type: "SET_FILTER", key: "resource_type", value: e.target.value })
               }
-              className="h-7 rounded border border-input bg-transparent px-2 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+              size="sm"
             />
           </div>
 
           {/* Error */}
-          {state.error && (
-            <div className="mb-3 rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {state.error}
-            </div>
-          )}
+          {state.error && <ErrorState message={state.error} className="mb-3 p-0" />}
 
           {/* Table */}
           <div className="flex-1 overflow-auto rounded border border-border">
@@ -646,15 +617,15 @@ export default function AdminPage() {
                 ))}
                 {state.logs.length === 0 && !state.isLoading && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
-                      No audit logs found
+                    <td colSpan={6} className="px-3 py-8">
+                      <EmptyState title="No audit logs found" />
                     </td>
                   </tr>
                 )}
                 {state.isLoading && (
                   <tr>
                     <td colSpan={6} className="px-3 py-8 text-center">
-                      <Loader2 size={16} className="mx-auto animate-spin text-muted-foreground" />
+                      <LoadingState label="Loading audit logs" />
                     </td>
                   </tr>
                 )}
@@ -669,23 +640,21 @@ export default function AdminPage() {
                 {state.total} total log{state.total !== 1 ? "s" : ""}
               </span>
               <div className="flex items-center gap-2">
-                <button
+                <IconButton
+                  aria-label="Previous page"
                   onClick={() => dispatch({ type: "PREV_PAGE" })}
                   disabled={(state.filters.offset ?? 0) === 0}
-                  className="rounded p-1 hover:bg-accent disabled:opacity-30"
-                >
-                  <ChevronLeft size={14} />
-                </button>
+                  icon={<ChevronLeft size={14} />}
+                />
                 <span>
                   Page {currentPage} of {totalPages}
                 </span>
-                <button
+                <IconButton
+                  aria-label="Next page"
                   onClick={() => dispatch({ type: "NEXT_PAGE" })}
                   disabled={!state.hasMore}
-                  className="rounded p-1 hover:bg-accent disabled:opacity-30"
-                >
-                  <ChevronRight size={14} />
-                </button>
+                  icon={<ChevronRight size={14} />}
+                />
               </div>
             </div>
           )}

@@ -10,6 +10,7 @@ import {
   WORKSPACE_PANELS,
   getWorkspacePanel,
 } from "@/domains/editor/panel-registry";
+import { IconButton } from "@/shared/components/ui/IconButton";
 import { useTheme } from "@/shared/contexts/theme-context";
 import type { User } from "@/shared/types";
 import type { PanelId } from "@/domains/editor/panel-registry";
@@ -35,14 +36,14 @@ interface RailButtonProps {
 
 function RailButton({ icon, title, isActive, onClick }: RailButtonProps) {
   return (
-    <button
+    <IconButton
+      aria-label={title}
       onClick={onClick}
       title={title}
-      className={`flex items-center justify-center w-8 h-8 rounded text-muted-foreground hover:bg-accent hover:text-foreground ${isActive ? "bg-accent text-foreground" : ""
-        }`}
-    >
-      {icon}
-    </button>
+      icon={icon}
+      size="md"
+      className={isActive ? "bg-accent text-foreground" : ""}
+    />
   );
 }
 
@@ -50,13 +51,13 @@ function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   return (
-    <button
+    <IconButton
+      aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
       onClick={() => setTheme(isDark ? "light" : "dark")}
       title={`Switch to ${isDark ? "light" : "dark"} mode`}
-      className="flex items-center justify-center w-8 h-8 rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-    >
-      {isDark ? <Sun size={16} /> : <Moon size={16} />}
-    </button>
+      icon={isDark ? <Sun size={16} /> : <Moon size={16} />}
+      size="md"
+    />
   );
 }
 
@@ -117,19 +118,19 @@ export function IconRail({
       )}
 
       {/* User avatar / logout */}
-      <button
+      <IconButton
+        aria-label={user ? `${user.display_name} (${user.role}) — Sign out` : "Sign out"}
         onClick={onLogout}
         title={user ? `${user.display_name} (${user.role}) — Sign out` : "Sign out"}
-        className="flex items-center justify-center w-8 h-8 rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-      >
-        {user ? (
+        icon={user ? (
           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent text-xs font-medium">
             {user.display_name.charAt(0).toUpperCase()}
           </span>
         ) : (
           <LogOut size={16} />
         )}
-      </button>
+        size="md"
+      />
     </div>
   );
 }

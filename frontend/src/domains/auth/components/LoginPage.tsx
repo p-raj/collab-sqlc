@@ -3,7 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Github, Loader2 } from "lucide-react";
+import { Github } from "lucide-react";
+import { Button } from "@/shared/components/ui/Button";
+import { ErrorState } from "@/shared/components/ui/DataState";
+import { Field, FieldError, FieldLabel } from "@/shared/components/ui/Field";
+import { Input } from "@/shared/components/ui/Input";
+import { Panel } from "@/shared/components/ui/Panel";
 import { useAuthStore } from "../hooks/use-auth-store";
 import * as authApi from "../services/auth-api";
 import type { SSOConfig } from "../types";
@@ -74,60 +79,52 @@ export default function LoginPage() {
 
   return (
     <div className="flex h-screen items-center justify-center bg-background">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-8">
+      <Panel className="w-full max-w-sm space-y-6 rounded-lg p-8">
         <div className="space-y-1 text-center">
           <h1 className="text-xl font-semibold tracking-tight">OOISH!</h1>
           <p className="text-sm text-muted-foreground">Sign in to your account</p>
         </div>
 
-        {error && (
-          <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        {error && <ErrorState message={error} className="p-0" />}
 
         {showEmailForm && (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-1.5">
-              <label htmlFor="email" className="text-sm font-medium">
-                Email
-              </label>
-              <input
+            <Field>
+              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <Input
                 id="email"
                 type="email"
                 autoComplete="email"
                 autoFocus
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                size="md"
                 placeholder="you@example.com"
                 {...register("email")}
               />
-              {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
-            </div>
+              {errors.email && <FieldError>{errors.email.message}</FieldError>}
+            </Field>
 
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="text-sm font-medium">
-                Password
-              </label>
-              <input
+            <Field>
+              <FieldLabel htmlFor="password">Password</FieldLabel>
+              <Input
                 id="password"
                 type="password"
                 autoComplete="current-password"
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                size="md"
                 placeholder="••••••••"
                 {...register("password")}
               />
-              {errors.password && (
-                <p className="text-xs text-destructive">{errors.password.message}</p>
-              )}
-            </div>
+              {errors.password && <FieldError>{errors.password.message}</FieldError>}
+            </Field>
 
-            <button
+            <Button
               type="submit"
-              disabled={isSubmitting}
-              className="inline-flex h-9 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+              variant="primary"
+              size="md"
+              loading={isSubmitting}
+              className="w-full"
             >
               {isSubmitting ? "Signing in..." : "Sign in"}
-            </button>
+            </Button>
           </form>
         )}
 
@@ -140,17 +137,18 @@ export default function LoginPage() {
         )}
 
         {showGitHub && (
-          <button
+          <Button
             type="button"
             onClick={handleGitHubLogin}
-            disabled={ssoLoading}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-input bg-transparent px-4 text-sm font-medium shadow-sm transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+            loading={ssoLoading}
+            leftIcon={<Github size={16} />}
+            className="w-full"
+            size="md"
           >
-            {ssoLoading ? <Loader2 size={16} className="animate-spin" /> : <Github size={16} />}
             Sign in with GitHub
-          </button>
+          </Button>
         )}
-      </div>
+      </Panel>
     </div>
   );
 }

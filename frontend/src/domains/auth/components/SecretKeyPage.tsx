@@ -2,6 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../hooks/use-auth-store";
 import { ShieldCheck } from "lucide-react";
+import { Button } from "@/shared/components/ui/Button";
+import { ErrorState } from "@/shared/components/ui/DataState";
+import { Field, FieldLabel } from "@/shared/components/ui/Field";
+import { Input } from "@/shared/components/ui/Input";
+import { Panel } from "@/shared/components/ui/Panel";
 
 export default function SecretKeyPage() {
   const navigate = useNavigate();
@@ -46,7 +51,7 @@ export default function SecretKeyPage() {
 
   return (
     <div className="flex h-screen items-center justify-center bg-background">
-      <div className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-8">
+      <Panel className="w-full max-w-sm space-y-6 rounded-lg p-8">
         <div className="space-y-1 text-center">
           <div className="flex justify-center">
             <ShieldCheck size={32} className="text-primary" />
@@ -58,46 +63,46 @@ export default function SecretKeyPage() {
           </p>
         </div>
 
-        {error && (
-          <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        {error && <ErrorState message={error} className="p-0" />}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <label htmlFor="secret-key" className="text-sm font-medium">
-              Secret Key
-            </label>
-            <input
+          <Field>
+            <FieldLabel htmlFor="secret-key">Secret Key</FieldLabel>
+            <Input
               id="secret-key"
               type="password"
               autoComplete="one-time-code"
               autoFocus
               value={secretKey}
               onChange={(e) => setSecretKey(e.target.value)}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono tracking-widest"
+              size="md"
+              className="font-mono tracking-widest"
               placeholder="••••••••••••"
             />
-          </div>
+          </Field>
 
-          <button
+          <Button
             type="submit"
-            disabled={isSubmitting || !secretKey.trim()}
-            className="inline-flex h-9 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+            variant="primary"
+            size="md"
+            loading={isSubmitting}
+            disabled={!secretKey.trim()}
+            className="w-full"
           >
             {isSubmitting ? "Verifying..." : "Verify"}
-          </button>
+          </Button>
         </form>
 
-        <button
+        <Button
           type="button"
           onClick={handleCancel}
-          className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+          variant="ghost"
+          size="md"
+          className="w-full"
         >
           Cancel and sign out
-        </button>
-      </div>
+        </Button>
+      </Panel>
     </div>
   );
 }

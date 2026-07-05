@@ -71,6 +71,8 @@ class HistoryService:
         params: dict[str, Any] | None = None,
         write_mode: bool = False,
         user_role: str = UserRole.VIEWER,
+        operation_language: str | None = None,
+        result_shape: str = "tabular",
         timeout_seconds: int | None = None,
         max_rows: int | None = None,
         api_query_id: str | None = None,
@@ -86,6 +88,8 @@ class HistoryService:
             sql=sql,
             status=status,
             source=source,
+            operation_language=operation_language,
+            result_shape=result_shape,
             params=params,
             write_mode=write_mode,
             user_role=user_role,
@@ -126,6 +130,8 @@ class HistoryService:
             row_count=result.row_count,
             execution_time_ms=entry.execution_time_ms or 0,
             truncated=result.truncated,
+            result_shape=result.result_shape,
+            data=result.data,
         )
 
     async def request_cancel_for_user(self, run_id: str, viewer: CurrentUser) -> RunHistoryModel:
@@ -156,6 +162,8 @@ class HistoryService:
         row_count: int,
         execution_time_ms: float,
         truncated: bool,
+        result_shape: str = "tabular",
+        data: dict[str, Any] | list[Any] | str | int | float | bool | None = None,
     ) -> RunHistoryModel:
         await self._repo.save_result(
             RunResultModel(
@@ -165,8 +173,11 @@ class HistoryService:
                 rows=rows,
                 row_count=row_count,
                 truncated=truncated,
+                result_shape=result_shape,
+                data=data,
             )
         )
+        entry.result_shape = result_shape
         return await self._repo.update_status(
             entry,
             RunStatus.SUCCESS,
@@ -275,6 +286,8 @@ def _to_response(
         sql=entry.sql,
         status=entry.status,
         source=entry.source,
+        operation_language=entry.operation_language,
+        result_shape=entry.result_shape,
         backend_pid=entry.backend_pid,
         backend_query_id=entry.backend_query_id,
         timeout_seconds=entry.timeout_seconds,

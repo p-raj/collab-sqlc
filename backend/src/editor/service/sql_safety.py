@@ -124,6 +124,29 @@ def _has_into_clause(stmt: exp.Expression | exp.Expr) -> bool:
 
 
 _READ_ONLY_PREFIXES = frozenset({"select", "show", "describe", "explain", "with"})
+_REDIS_READ_ONLY_COMMANDS = frozenset(
+    {
+        "dbsize",
+        "exists",
+        "get",
+        "hget",
+        "hgetall",
+        "hlen",
+        "llen",
+        "lrange",
+        "mget",
+        "scan",
+        "scard",
+        "smembers",
+        "strlen",
+        "ttl",
+        "type",
+        "xinfo",
+        "xlen",
+        "zcard",
+        "zrange",
+    }
+)
 
 
 def _looks_read_only(sql: str, dialect: DialectProfile | None = None) -> bool:
@@ -135,6 +158,12 @@ def _looks_read_only(sql: str, dialect: DialectProfile | None = None) -> bool:
 
 def is_read_only_query(sql: str, db_type: str | None = None) -> bool:
     """Returns True if the SQL contains only SELECT/SHOW/EXPLAIN/DESCRIBE statements."""
+    if db_type == "redis":
+        first_word = sql.strip().split(None, 1)[0].lower() if sql.strip() else ""
+        return first_word in _REDIS_READ_ONLY_COMMANDS
+    if db_type == "dynamodb":
+        return sql.lstrip().lower().startswith("select")
+
     dialect = get_dialect(db_type)
     read_only = dialect.read_only_prefixes
     dangerous = dialect.dangerous_functions

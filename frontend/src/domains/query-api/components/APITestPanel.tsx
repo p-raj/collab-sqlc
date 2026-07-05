@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { HTTPError } from "ky";
-import { Play, Loader2 } from "lucide-react";
+import { Play } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/shared/components/ui/Button";
+import { Callout } from "@/shared/components/ui/Callout";
+import { ErrorState } from "@/shared/components/ui/DataState";
+import { Field, FieldLabel } from "@/shared/components/ui/Field";
+import { Input } from "@/shared/components/ui/Input";
+import { Select } from "@/shared/components/ui/Select";
 import * as queryApiService from "../services/query-api";
 import type { ParameterDef } from "../types";
 
@@ -144,24 +150,25 @@ export function APITestPanel({
       {parameters && parameters.length > 0 && (
         <div className="space-y-2">
           {parameters.map((p) => (
-            <label key={p.name} className="block space-y-0.5">
-              <span className="text-xs text-muted-foreground">
+            <Field key={p.name}>
+              <FieldLabel>
                 {p.name}
                 <span className="ml-1 text-[10px]">({p.type})</span>
                 {p.required && <span className="text-destructive ml-0.5">*</span>}
-              </span>
+              </FieldLabel>
               {p.type === "boolean" ? (
-                <select
+                <Select
                   value={getDisplayedValue(p)}
                   onChange={(e) => handleParamChange(p.name, e.target.value)}
-                  className="w-full rounded border bg-background px-2 py-1 text-xs font-mono"
+                  size="sm"
+                  className="font-mono"
                 >
                   <option value="">Select...</option>
                   <option value="true">true</option>
                   <option value="false">false</option>
-                </select>
+                </Select>
               ) : (
-                <input
+                <Input
                   type={inputTypeFor(p)}
                   value={getDisplayedValue(p)}
                   onChange={(e) => handleParamChange(p.name, e.target.value)}
@@ -173,36 +180,35 @@ export function APITestPanel({
                         ? "any"
                         : undefined
                   }
-                  className="w-full rounded border bg-background px-2 py-1 text-xs font-mono"
+                  size="sm"
+                  className="font-mono"
                 />
               )}
-            </label>
+            </Field>
           ))}
         </div>
       )}
 
       {missingRequiredParameters.length > 0 && (
-        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+        <Callout tone="warning" icon={null}>
           Fill required parameters before running: {missingRequiredParameters.join(", ")}
-        </div>
+        </Callout>
       )}
 
       {/* Run button */}
-      <button
+      <Button
         onClick={handleRun}
-        disabled={loading || !connectionId || missingRequiredParameters.length > 0}
-        className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        variant="primary"
+        loading={loading}
+        disabled={!connectionId || missingRequiredParameters.length > 0}
+        leftIcon={<Play className="h-3 w-3" />}
+        className="w-full"
       >
-        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
         Run Test
-      </button>
+      </Button>
 
       {/* Error */}
-      {error && (
-        <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          {error}
-        </div>
-      )}
+      {error && <ErrorState message={error} className="p-0 text-xs" />}
 
       {/* Result */}
       {result && (

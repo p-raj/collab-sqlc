@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { Copy, Globe } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/shared/components/ui/Button";
 import { buildHostedApiPath, buildHostedApiUrl } from "../utils/hosted-api-url";
 
 interface HostedApiEndpointChipProps {
@@ -44,15 +45,15 @@ export function HostedApiEndpointChip({
   }
 
   return (
-    <button
+    <Button
       type="button"
       onClick={() => void handleCopyHostedApiUrl()}
       title={`Copy full API URL: ${hostedApiUrl}`}
-      className="ml-auto inline-flex max-w-[440px] items-center gap-1.5 rounded border border-emerald-500/20 bg-emerald-500/5 px-2 py-1 text-xs text-emerald-600 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
+      leftIcon={<Globe size={12} />}
+      rightIcon={<Copy size={12} className="shrink-0" />}
+      className="ml-auto inline-flex max-w-[440px] items-center gap-1.5 rounded border border-success/20 bg-success/5 px-2 py-1 text-xs text-success transition-colors hover:bg-success/10"
     >
-      <Globe size={12} />
       <span className="truncate font-mono">{hostedApiPath}</span>
-      <Copy size={12} className="shrink-0" />
-    </button>
+    </Button>
   );
 }

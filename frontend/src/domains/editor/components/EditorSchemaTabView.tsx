@@ -6,6 +6,7 @@ interface EditorSchemaTabViewProps {
   connectionName: string;
   schemaName: string;
   tableName: string;
+  objectId?: string;
   activeSection: TableExplorerTabId;
   onChangeSection: (section: TableExplorerTabId) => void;
   onPreviewQuery: (sql: string) => void;

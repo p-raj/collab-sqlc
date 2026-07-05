@@ -4,6 +4,9 @@ import { toast } from "sonner";
 import { createTab } from "@/domains/editor/hooks/editor-reducer";
 import { useEditorContext } from "@/domains/editor/hooks/editor-context";
 import { useSavedQueriesStore } from "@/domains/queries/hooks/use-saved-queries-store";
+import { EmptyState, LoadingState } from "@/shared/components/ui/DataState";
+import { IconButton } from "@/shared/components/ui/IconButton";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
 import type { SavedQuery } from "@/domains/queries/types";
 import {
   buildFolderLookup,
@@ -171,10 +174,7 @@ export function ExecutionLogsPanel({ queryId }: Props) {
       </div>
 
       {isLoading && logs.length === 0 && (
-        <div className="flex items-center gap-1.5 px-2 py-3">
-          <Loader2 size={12} className="animate-spin text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Loading...</span>
-        </div>
+        <LoadingState label="Loading API execution logs" showLabel className="justify-start px-2 py-3" />
       )}
 
       {logs.map((log) => {
@@ -188,25 +188,25 @@ export function ExecutionLogsPanel({ queryId }: Props) {
         );
 
         return (
-          <button
+          <ObjectListItem
             key={log.id}
-            type="button"
             onClick={() => void handleOpenLog(log.id)}
             disabled={openingLogId === log.id}
-            className="flex items-start gap-1.5 px-2 py-1.5 text-left text-xs hover:bg-accent/50 disabled:opacity-60"
+            className="items-start px-2 py-1.5 disabled:opacity-60"
+            indicator={
+              openingLogId === log.id ? (
+                <Loader2
+                  size={10}
+                  className="mt-0.5 shrink-0 animate-spin text-muted-foreground/60"
+                />
+              ) : isSuccess ? (
+                <CheckCircle2 size={10} className="mt-0.5 shrink-0 text-muted-foreground/60" />
+              ) : (
+                <XCircle size={10} className="mt-0.5 shrink-0 text-destructive/60" />
+              )
+            }
             title="Click to load query and logged results"
           >
-            {openingLogId === log.id ? (
-              <Loader2
-                size={10}
-                className="mt-0.5 shrink-0 animate-spin text-muted-foreground/60"
-              />
-            ) : isSuccess ? (
-              <CheckCircle2 size={10} className="mt-0.5 shrink-0 text-muted-foreground/60" />
-            ) : (
-              <XCircle size={10} className="mt-0.5 shrink-0 text-destructive/60" />
-            )}
-
             <div className="min-w-0 flex-1">
               <p className="truncate text-foreground">{queryPathLabel}</p>
               <p className="text-[0.75rem] text-muted-foreground/60">
@@ -221,31 +221,31 @@ export function ExecutionLogsPanel({ queryId }: Props) {
                 {formatHistoryTimestamp(log.created_at)}
               </p>
             </div>
-          </button>
+          </ObjectListItem>
         );
       })}
 
       {logs.length === 0 && !isLoading && (
-        <div className="px-2 py-2 text-xs text-muted-foreground/60">No API execution logs yet.</div>
+        <EmptyState title="No API execution logs yet." className="items-start px-2 py-2 text-left" />
       )}
 
       {(offset > 0 || logs.length === PAGE_SIZE) && (
         <div className="flex items-center justify-between px-2 py-1 text-[0.75rem] text-muted-foreground">
-          <button
+          <IconButton
+            aria-label="Previous execution log page"
             onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
             disabled={offset === 0}
-            className="rounded p-0.5 hover:bg-accent disabled:opacity-30"
-          >
-            <ChevronLeft size={10} />
-          </button>
+            size="xs"
+            icon={<ChevronLeft size={10} />}
+          />
           <span>Page {currentPage}</span>
-          <button
+          <IconButton
+            aria-label="Next execution log page"
             onClick={() => setOffset(offset + PAGE_SIZE)}
             disabled={logs.length < PAGE_SIZE}
-            className="rounded p-0.5 hover:bg-accent disabled:opacity-30"
-          >
-            <ChevronRight size={10} />
-          </button>
+            size="xs"
+            icon={<ChevronRight size={10} />}
+          />
         </div>
       )}
     </div>

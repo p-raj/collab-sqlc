@@ -30,6 +30,8 @@ class RunHistoryResponse(ApiSchema):
     sql: str
     status: str
     source: str = RunSource.EDITOR
+    operation_language: str | None = None
+    result_shape: str = "tabular"
     backend_pid: int | None = None
     backend_query_id: str | None = None
     timeout_seconds: int | None = None
@@ -63,6 +65,8 @@ class RunResultResponse(ApiSchema):
     row_count: int
     execution_time_ms: float
     truncated: bool = False
+    result_shape: str = "tabular"
+    data: dict[str, Any] | list[Any] | str | int | float | bool | None = None
 
 
 class CancelRunResponse(ApiSchema):

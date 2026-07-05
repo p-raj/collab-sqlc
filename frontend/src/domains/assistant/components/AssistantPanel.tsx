@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Loader2, MessageSquarePlus, Send, ArrowLeft, Code } from "lucide-react";
 import DOMPurify from "dompurify";
+import { Button } from "@/shared/components/ui/Button";
+import { EmptyState, ErrorState, LoadingState } from "@/shared/components/ui/DataState";
+import { IconButton } from "@/shared/components/ui/IconButton";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
+import { Textarea } from "@/shared/components/ui/Textarea";
 import { useEylo } from "@/shared/contexts/eylo-provider";
 import { useConversations, useMessages, useAgentStatus } from "../hooks/use-assistant";
 import type { TConversation } from "@/lib/eylo/modules/conversation/types";
@@ -26,23 +31,21 @@ function ConversationList({
 }) {
   return (
     <div className="flex flex-col">
-      <button
+      <Button
         onClick={onNew}
-        className="mx-2 mb-1 flex h-7 items-center gap-1.5 rounded border border-input px-2 text-xs text-muted-foreground hover:bg-accent"
+        leftIcon={<MessageSquarePlus size={12} />}
+        className="mx-2 mb-1 justify-start"
       >
-        <MessageSquarePlus size={12} />
         New Conversation
-      </button>
+      </Button>
       {conversations.length === 0 && (
-        <p className="px-2 py-3 text-center text-xs text-muted-foreground/60">
-          No conversations yet
-        </p>
+        <EmptyState title="No conversations yet" className="px-2 py-3" />
       )}
       {conversations.map((conv) => (
-        <button
+        <ObjectListItem
           key={conv.id}
           onClick={() => onSelect(conv.id)}
-          className="flex flex-col gap-0.5 border-b border-border px-2 py-1.5 text-left hover:bg-accent/50"
+          className="flex-col items-start gap-0.5 border-b border-border px-2 py-1.5"
         >
           <span className="truncate text-xs font-medium">
             {conv.title || "Untitled"}
@@ -50,7 +53,7 @@ function ConversationList({
           <span className="text-[0.75rem] text-muted-foreground">
             {new Date(conv.createdAt).toLocaleDateString()}
           </span>
-        </button>
+        </ObjectListItem>
       ))}
     </div>
   );
@@ -131,15 +134,16 @@ function MessageBubble({
       {sqlBlocks.length > 0 && (
         <div className="flex gap-1 px-1">
           {sqlBlocks.map((block, i) => (
-            <button
+            <Button
               key={i}
               onClick={() => onApplySql(block)}
-              className="flex items-center gap-0.5 rounded bg-accent/50 px-1.5 py-0.5 text-[0.75rem] text-muted-foreground hover:bg-accent hover:text-foreground"
+              variant="ghost"
+              size="xs"
+              leftIcon={<Code size={9} />}
               title="Apply to editor"
             >
-              <Code size={9} />
               Apply SQL{sqlBlocks.length > 1 ? ` #${i + 1}` : ""}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -187,20 +191,20 @@ function ChatView({
   return (
     <div className="flex h-full flex-col">
       {/* Chat header */}
-      <button
+      <Button
         onClick={onBack}
-        className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+        variant="ghost"
+        size="xs"
+        leftIcon={<ArrowLeft size={12} />}
+        className="justify-start"
       >
-        <ArrowLeft size={12} />
         Back to conversations
-      </button>
+      </Button>
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto px-2 py-1">
         {messages.length === 0 && (
-          <p className="py-4 text-center text-xs text-muted-foreground/60">
-            No messages yet
-          </p>
+          <EmptyState title="No messages yet" className="py-4" />
         )}
         {messages.map((msg) => (
           <MessageBubble
@@ -216,22 +220,22 @@ function ChatView({
       {/* Input */}
       <div className="border-t border-border p-2">
         <div className="relative">
-          <textarea
+          <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about your database…"
             rows={2}
-            className="w-full resize-none rounded border border-input bg-transparent px-2 py-1.5 pr-7 text-xs placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
+            className="pr-7"
           />
-          <button
+          <IconButton
+            aria-label="Send"
             onClick={handleSend}
             disabled={!input.trim()}
+            icon={<Send size={12} />}
             className="absolute right-1.5 top-1.5 rounded p-0.5 text-muted-foreground hover:bg-accent disabled:opacity-50"
             title="Send"
-          >
-            <Send size={12} />
-          </button>
+          />
         </div>
       </div>
     </div>
@@ -264,35 +268,37 @@ function NewConversationView({
 
   return (
     <div className="flex flex-col gap-2 p-2">
-      <button
+      <Button
         onClick={onCancel}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        variant="ghost"
+        size="xs"
+        leftIcon={<ArrowLeft size={12} />}
+        className="justify-start"
       >
-        <ArrowLeft size={12} />
         Back
-      </button>
+      </Button>
       <p className="text-xs text-muted-foreground">
         Start a conversation with the SQL assistant. Schema context from your active
         connection will be included automatically.
       </p>
       <div className="relative">
-        <textarea
+        <Textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask anything about your database…"
           rows={3}
-          className="w-full resize-none rounded border border-input bg-transparent px-2 py-1.5 pr-7 text-xs placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring"
+          className="pr-7"
           autoFocus
         />
-        <button
+        <IconButton
+          aria-label="Start conversation"
           onClick={handleSend}
           disabled={!input.trim()}
+          icon={<Send size={12} />}
           className="absolute right-1.5 top-1.5 rounded p-0.5 text-muted-foreground hover:bg-accent disabled:opacity-50"
           title="Start conversation"
-        >
-          <Send size={12} />
-        </button>
+        />
       </div>
     </div>
   );
@@ -333,46 +339,35 @@ export function AssistantPanel({ connectionDbml, onApplySql }: AssistantPanelPro
 
   if (!configured) {
     return (
-      <div className="flex flex-col items-center gap-2 px-2 py-8">
-        <Bot size={16} className="text-muted-foreground/50" />
-        <span className="text-xs text-muted-foreground text-center">
-          AI Assistant is not configured. Set the Eylo environment variables to enable it.
-        </span>
-      </div>
+      <EmptyState
+        icon={Bot}
+        title="AI Assistant is not configured"
+        description="Set the Eylo environment variables to enable it."
+        className="px-2 py-8"
+      />
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center gap-2 px-2 py-8">
-        <Bot size={16} className="text-destructive/60" />
-        <span className="text-xs text-destructive/80 text-center">
-          Failed to connect to assistant
-        </span>
-        <span className="text-[0.75rem] text-muted-foreground text-center">
-          {error}
-        </span>
-      </div>
+      <ErrorState title="Failed to connect to assistant" message={error} className="px-2 py-8" />
     );
   }
 
   if (!initialized) {
     return (
-      <div className="flex flex-col items-center gap-2 py-8">
-        <Loader2 size={16} className="animate-spin text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">Connecting to assistant…</span>
-      </div>
+      <LoadingState label="Connecting to assistant" showLabel className="py-8" />
     );
   }
 
   if (!connected) {
     return (
-      <div className="flex flex-col items-center gap-2 px-2 py-8">
-        <Bot size={16} className="text-muted-foreground/50" />
-        <span className="text-xs text-muted-foreground">
-          Assistant disconnected. Reconnecting…
-        </span>
-      </div>
+      <EmptyState
+        icon={Bot}
+        title="Assistant disconnected"
+        description="Reconnecting…"
+        className="px-2 py-8"
+      />
     );
   }
 
@@ -404,4 +399,3 @@ export function AssistantPanel({ connectionDbml, onApplySql }: AssistantPanelPro
     />
   );
 }
-

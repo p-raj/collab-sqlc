@@ -332,16 +332,12 @@ class PostgresDriver:
             await self.disconnect(connection)
 
     async def test_connection(self, config: ConnectionConfig) -> bool:
-        conn = None
+        conn = await self.connect(config)
         try:
-            conn = await self.connect(config)
             await conn.fetchval("SELECT 1")
             return True
-        except Exception:
-            return False
         finally:
-            if conn is not None:
-                await conn.close()
+            await conn.close()
 
 
 def _map_constraint_kind(kind: str) -> str:

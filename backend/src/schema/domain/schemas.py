@@ -1,8 +1,12 @@
 """Schema domain API schemas."""
 
+from typing import Literal
+
 from pydantic import Field
 
 from src.shared.domain.schemas import ApiSchema
+
+EngineKind = Literal["sql", "redis", "dynamodb"]
 
 
 class ColumnSchema(ApiSchema):
@@ -27,6 +31,31 @@ class SchemaResponse(ApiSchema):
     connection_id: str
     tables: list[TableSchema]
     cached: bool = False
+
+
+class PreviewOperationSchema(ApiSchema):
+    label: str
+    language: str
+    text: str
+    write_mode_required: bool = False
+
+
+class CatalogObjectSchema(ApiSchema):
+    id: str
+    kind: str
+    namespace: str
+    name: str
+    display_name: str
+    data_type: str | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class CatalogObjectsResponse(ApiSchema):
+    connection_id: str
+    engine_kind: EngineKind
+    objects: list[CatalogObjectSchema]
+    cached: bool = False
+    truncated: bool = False
 
 
 class RelationshipColumnSchema(ApiSchema):
@@ -122,4 +151,26 @@ class TableDetailResponse(ApiSchema):
     relationships: TableRelationshipsSchema
     metadata: TableMetadataSchema
     erd: TableErdSchema
+    cached: bool = False
+
+
+class ObjectSectionSchema(ApiSchema):
+    id: str
+    title: str
+    kind: str
+    description: str | None = None
+    columns: list[ColumnSchema] = Field(default_factory=list)
+    indexes: list[TableIndexSchema] = Field(default_factory=list)
+    properties: list[TableMetadataPropertySchema] = Field(default_factory=list)
+    relationships: TableRelationshipsSchema | None = None
+    erd: TableErdSchema | None = None
+    snippets: list[PreviewOperationSchema] = Field(default_factory=list)
+
+
+class ObjectDetailResponse(ApiSchema):
+    connection_id: str
+    engine_kind: EngineKind
+    object: CatalogObjectSchema
+    sections: list[ObjectSectionSchema]
+    preview_operation: PreviewOperationSchema
     cached: bool = False

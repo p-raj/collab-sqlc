@@ -19,4 +19,5 @@ def get_schema_service(
         connection_service=conn_service,
         redis=get_redis_connection(settings),
         cache_ttl=settings.redis.schema_cache_ttl,
+        dynamodb_cache_ttl=settings.redis.dynamodb_schema_cache_ttl,
     )

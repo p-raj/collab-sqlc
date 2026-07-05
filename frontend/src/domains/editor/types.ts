@@ -2,10 +2,12 @@
 
 import type { TableExplorerTabId } from "@/domains/schema/types";
 import type { DatabaseType } from "@/domains/connections/engine-registry";
+import type { ResultShape } from "@/domains/connections/engine-registry";
 
 export interface SchemaViewData {
   schemaName: string;
   tableName: string;
+  objectId?: string;
   activeSection: TableExplorerTabId;
 }
 
@@ -54,6 +56,9 @@ export interface QueryResult {
   rows: unknown[][];
   row_count: number;
   execution_time_ms: number;
+  result_shape?: ResultShape;
+  data?: unknown;
+  truncated?: boolean;
 }
 
 export interface ExplainResult {
@@ -104,6 +109,7 @@ export type EditorAction =
   | { type: "CLOSE_OTHER_TABS"; keepTabId: string }
   | { type: "TOGGLE_WRITE_MODE"; tabId: string }
   | { type: "SET_API_ENABLED"; tabId: string; enabled: boolean }
+  | { type: "SET_SCHEMA_OBJECT_ID"; tabId: string; objectId: string }
   | { type: "SET_SCHEMA_SECTION"; tabId: string; section: TableExplorerTabId };
 
 export interface EditorState {

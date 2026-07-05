@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { IconButton } from "./ui/IconButton";
 
 interface DialogProps {
   title: string;
@@ -27,12 +28,12 @@ export function Dialog({ title, children, onClose }: DialogProps) {
       <div className="relative flex w-[80vw] max-h-[80vh] flex-col rounded-lg border bg-card shadow-lg">
         <div className="flex h-9 shrink-0 items-center justify-between border-b px-3">
           <span className="text-xs font-semibold tracking-tight">{title}</span>
-          <button
+          <IconButton
+            aria-label="Close dialog"
             onClick={onClose}
-            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <X size={14} />
-          </button>
+            size="xs"
+            icon={<X size={14} />}
+          />
         </div>
         <div className="flex-1 overflow-y-auto p-3">{children}</div>
       </div>

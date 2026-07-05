@@ -1,8 +1,8 @@
 # Collab SQLC
 
-**Self-hosted collaborative SQL editor for teams that care about data privacy.**
+**Self-hosted collaborative query editor for teams that care about data privacy.**
 
-Collab SQLC gives your team a shared workspace for writing, running, and organizing SQL queries against PostgreSQL and ClickHouse. Everything runs on your infrastructure.
+Collab SQLC gives your team a shared workspace for writing, running, and organizing queries against PostgreSQL, ClickHouse, Redis, and DynamoDB. Everything runs on your infrastructure.
 
 ---
 ## Screenshots
@@ -25,11 +25,12 @@ Collab SQLC gives your team a shared workspace for writing, running, and organiz
 ## Features
 
 ### Core Editor
-- **Monaco SQL Editor** — Syntax highlighting, autocomplete, keyboard shortcuts, multiple themes
+- **Monaco Query Editor** — Engine-aware syntax highlighting, autocomplete, keyboard shortcuts, and multiple themes
 - **Tabs** — Multiple concurrent query tabs, each with independent connection, results, and variables
 - **Query Variables** — Parameterized queries with `{{variable}}` syntax and a visual variable bar
 - **SQL Formatting** — One-click formatting for PostgreSQL and ClickHouse, preserving dynamic parameters like `$name` and `{name:type}`
-- **Results Grid** — AG Grid with column types, sorting, filtering, and copy/export
+- **Polyglot Results** — Tabular SQL rows plus Redis scalar/list/key-value and DynamoDB document-shaped results
+- **Results Grid** — AG Grid with column types, sorting, filtering, and copy/export where supported
 - **CSV Export** — Engine-aware export path that streams where supported and preserves SQL safety checks everywhere
 
 ### Organization
@@ -66,6 +67,8 @@ Collab SQLC gives your team a shared workspace for writing, running, and organiz
 ### Connections
 - **PostgreSQL** — Full support via asyncpg
 - **ClickHouse** — Full support via clickhouse-connect
+- **Redis** — Command execution, key browsing, metadata, and read-only command gating
+- **DynamoDB** — PartiQL execution, table browsing, metadata, and document result previews
 - **SSH Tunnels** — Connect through bastion hosts with key-based auth
 - **SSL/TLS** — CA certificate, client certificate, and client key support
 - **Connection Testing** — Validate connectivity before saving
@@ -79,8 +82,13 @@ Collab SQLC gives your team a shared workspace for writing, running, and organiz
 ### Schema Explorer
 - **Database Introspection** — Browse schemas, tables, columns with types, nullability, defaults, comments
 - **Tabbed Table Explorer** — Open any table into Schema, Relationships, Metadata, and ERD views with one consistent preview flow
+- **Catalog/Object Explorer** — Shared object-detail contract for SQL tables, Redis keys, and DynamoDB tables
 - **Row Counts** — Approximate row counts per table
-- **Redis Caching** — Configurable TTL with manual cache invalidation
+- **Redis Caching** — Configurable TTL with manual cache invalidation; DynamoDB schema cache defaults to a longer TTL
+
+### Design System
+- **Shared UI Primitives** — Buttons, panels, fields, menus, tabs, toolbars, badges, callouts, and status indicators use one tokenized component layer
+- **Theme Tokens** — Light/dark semantic color tokens are centralized in the frontend design system
 
 ---
 
@@ -188,6 +196,7 @@ All settings are via environment variables. See [`.env.example`](.env.example) f
 |---|---|---|
 | `DB_POOL_SIZE` | SQLAlchemy connection pool size | `20` |
 | `REDIS_SCHEMA_CACHE_TTL` | Schema cache TTL in seconds | `300` |
+| `REDIS_DYNAMODB_SCHEMA_CACHE_TTL` | DynamoDB schema cache TTL in seconds | `86400` |
 | `ASSISTANT_PROVIDER` | AI provider (`openai` or blank for stub) | — |
 | `ASSISTANT_OPENAI_API_KEY` | OpenAI API key | — |
 | `ASSISTANT_OPENAI_MODEL` | Model name | `gpt-4o` |
@@ -211,15 +220,15 @@ Redis cache + job queue ─▶ Taskiq worker
                            │
                            ▼
                   Target databases
-             PostgreSQL · ClickHouse
+        PostgreSQL · ClickHouse · Redis · DynamoDB
 ```
 
 | Layer | Stack |
 |---|---|
-| **Frontend** | React 19 · TypeScript (strict) · Vite · Tailwind CSS · Monaco Editor · AG Grid · Zustand · ky |
-| **Backend** | Python 3.12 · FastAPI · SQLAlchemy (async) · Pydantic v2 · asyncpg · Redis · Taskiq · Loguru |
+| **Frontend** | React 19 · TypeScript (strict) · Vite · Tailwind CSS · tokenized UI primitives · Monaco Editor · AG Grid · Zustand · ky |
+| **Backend** | Python 3.12 · FastAPI · SQLAlchemy (async) · Pydantic v2 · asyncpg · clickhouse-connect · redis-py · boto3 · Redis · Taskiq · Loguru |
 | **CLI** | Go · Cobra · Docker Compose orchestration |
-| **Infrastructure** | PostgreSQL 18 (app DB) · Redis 7 (cache, rate limits, async jobs) · Docker Compose |
+| **Infrastructure** | PostgreSQL 16 (app DB) · Redis 7 (cache, rate limits, async jobs) · Docker Compose |
 
 ---
 
@@ -262,11 +271,6 @@ USER MANAGEMENT
   users set-role <role>   Set a user's role (admin|editor|viewer)
   users activate          Activate a user
   users deactivate        Deactivate a user
-
-TESTING
-  test                    Run all tests (backend + frontend)
-  test:backend [args]     Run backend tests (pytest)
-  test:frontend [args]    Run frontend tests (vitest)
 
 CODE QUALITY
   lint                    Lint all code (ruff + oxlint)

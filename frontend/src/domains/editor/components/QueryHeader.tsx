@@ -17,6 +17,11 @@ import {
 import { toast } from "sonner";
 import { getDatabaseEngine } from "@/domains/connections/engine-registry";
 import type { DatabaseType } from "@/domains/connections/types";
+import { Badge } from "@/shared/components/ui/Badge";
+import { Button } from "@/shared/components/ui/Button";
+import { IconButton } from "@/shared/components/ui/IconButton";
+import { Input } from "@/shared/components/ui/Input";
+import { MenuContent, MenuDivider, MenuItem } from "@/shared/components/ui/Menu";
 import { useEditorContext } from "../hooks/editor-context";
 import type { EditorSavedQueryFolder } from "../hooks/editor-saved-query-context";
 import { copyToClipboard } from "../services/export-utils";
@@ -25,7 +30,6 @@ import { SaveQueryPopover } from "./SaveQueryPopover";
 interface QueryHeaderProps {
   isExecuting: boolean;
   hasSelection: boolean;
-  backendPid: number | null;
   showSavePopover: boolean;
   onShowSavePopover: (show: boolean) => void;
   onRun: () => void;
@@ -50,7 +54,6 @@ interface QueryHeaderProps {
 export function QueryHeader({
   isExecuting,
   hasSelection,
-  backendPid,
   showSavePopover,
   onShowSavePopover,
   onRun,
@@ -164,7 +167,7 @@ export function QueryHeader({
     <div className="flex h-8 items-center gap-1.5 border-b bg-card px-3">
       {/* [Name] */}
       {editing ? (
-        <input
+        <Input
           ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -173,12 +176,15 @@ export function QueryHeader({
             if (e.key === "Enter") commit();
             if (e.key === "Escape") setEditing(false);
           }}
-          className="h-6 rounded border border-input bg-transparent px-1.5 text-sm font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          className="h-6 text-sm font-medium"
         />
       ) : (
-        <button
+        <Button
+          type="button"
           onClick={startEditing}
-          className={`truncate text-sm text-foreground ${isSchema ? "cursor-default" : "cursor-text hover:text-muted-foreground"}`}
+          variant="ghost"
+          size="xs"
+          className={`min-w-0 max-w-[18rem] justify-start truncate px-0 text-sm text-foreground hover:bg-transparent ${isSchema ? "cursor-default" : "cursor-text hover:text-muted-foreground"}`}
         >
           {activeTab.folderName && (
             <span className="font-normal text-muted-foreground">{activeTab.folderName} / </span>
@@ -189,7 +195,7 @@ export function QueryHeader({
               unsaved
             </span>
           )}
-        </button>
+        </Button>
       )}
 
       {!isSchema && (
@@ -198,96 +204,97 @@ export function QueryHeader({
           {isExecuting ? (
             <div className="flex items-center gap-1.5">
               {supportsCancel ? (
-                <button
+                <Button
+                  variant="danger"
+                  size="xs"
                   onClick={onCancel}
-                  className="inline-flex h-6 items-center gap-1 rounded bg-destructive px-2.5 text-xs font-medium text-destructive-foreground transition-colors hover:bg-destructive/90"
+                  leftIcon={<Square size={10} fill="currentColor" />}
                 >
-                  <Square size={10} fill="currentColor" />
                   Cancel
-                </button>
+                </Button>
               ) : (
-                <span className="inline-flex h-6 items-center gap-1 rounded border border-input px-2 text-xs text-muted-foreground">
+                <Badge className="h-6 gap-1 border border-input bg-transparent">
                   <Loader2 size={12} className="animate-spin" />
                   Running
-                </span>
-              )}
-              {backendPid !== null && (
-                <span className="font-mono text-[0.75rem] text-muted-foreground">
-                  PID {backendPid}
-                </span>
+                </Badge>
               )}
             </div>
           ) : (
-            <button
+            <Button
+              variant="primary"
+              size="xs"
               onMouseDown={preserveEditorCursor}
               onClick={onRun}
               disabled={!activeTab.sql.trim()}
-              className="inline-flex h-6 items-center gap-1 rounded bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              leftIcon={<Play size={12} />}
             >
-              <Play size={12} />
               {hasSelection ? "Run Selection" : "Run"}
-            </button>
+            </Button>
           )}
 
           {/* [Explain] — shown when the selected engine advertises support */}
           {!isExecuting && supportsExplain && (
-            <button
+            <Button
+              variant="secondary"
+              size="xs"
               onMouseDown={preserveEditorCursor}
               onClick={onExplain}
               disabled={!activeTab.sql.trim()}
-              className="inline-flex h-6 items-center gap-1 rounded border border-input px-2 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
               title="Explain Analyze (⌘⇧E)"
+              leftIcon={<ListTree size={12} />}
             >
-              <ListTree size={12} />
               Explain
-            </button>
+            </Button>
           )}
 
           {/* [Format] */}
-          <button
+          <Button
+            variant="secondary"
+            size="xs"
             onClick={onFormat}
             disabled={!activeTab.sql.trim()}
-            className="inline-flex h-6 items-center gap-1 rounded border border-input px-2 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
             title="Format SQL"
+            leftIcon={<AlignLeft size={12} />}
           >
-            <AlignLeft size={12} />
             Format
-          </button>
+          </Button>
 
           {/* [Save ▾ / Save As] */}
           <div className="relative" ref={saveMenuRef}>
             <div className="flex items-center">
-              <button
+              <Button
+                variant="secondary"
+                size="xs"
                 onClick={onSave}
                 disabled={!activeTab.sql.trim()}
-                className="inline-flex h-6 items-center gap-1 rounded-l border border-input px-2 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                className="rounded-r-none"
                 title="Save (⌘S)"
+                leftIcon={<Save size={12} />}
               >
-                <Save size={12} />
                 Save
-              </button>
-              <button
+              </Button>
+              <IconButton
+                variant="secondary"
+                size="xs"
                 onClick={() => setSaveMenuOpen((p) => !p)}
                 disabled={!activeTab.sql.trim()}
                 aria-label="Save options"
-                className="inline-flex h-6 items-center rounded-r border border-l-0 border-input px-1 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:opacity-50"
-              >
-                <ChevronDown size={12} />
-              </button>
+                className="rounded-l-none border-l-0"
+                icon={<ChevronDown size={12} />}
+              />
             </div>
             {saveMenuOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-40 rounded-md border bg-popover py-1 shadow-md">
-                <button
+              <MenuContent className="absolute left-0 top-full z-50 mt-1 w-40">
+                <MenuItem
                   onClick={() => {
                     setSaveMenuOpen(false);
                     onShowSavePopover(true);
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-popover-foreground hover:bg-accent"
                 >
                   Save As…
-                </button>
+                </MenuItem>
                 {renderSaveMenuItems?.(() => setSaveMenuOpen(false))}
-              </div>
+              </MenuContent>
             )}
             {showSavePopover && (
               <SaveQueryPopover
@@ -303,87 +310,82 @@ export function QueryHeader({
 
           {/* [...] More options */}
           <div className="relative" ref={menuRef}>
-            <button
+            <IconButton
               onClick={() => setMenuOpen((p) => !p)}
-              className="rounded p-0.5 text-muted-foreground hover:bg-accent"
               title="More options"
-            >
-              <MoreHorizontal size={14} />
-            </button>
+              aria-label="More options"
+              icon={<MoreHorizontal size={14} />}
+            />
 
             {menuOpen && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-md border bg-popover py-1 shadow-md">
-                <button
+              <MenuContent className="absolute left-0 top-full z-50 mt-1 w-48">
+                <MenuItem
                   onClick={handleDuplicate}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-popover-foreground hover:bg-accent"
                 >
                   <Files size={12} />
                   Duplicate tab
-                </button>
-                <button
+                </MenuItem>
+                <MenuItem
                   onClick={handleCloseOthers}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-popover-foreground hover:bg-accent"
                 >
                   <XCircle size={12} />
                   Close other tabs
-                </button>
-                <button
+                </MenuItem>
+                <MenuItem
                   onClick={handleCopySql}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-popover-foreground hover:bg-accent"
                 >
                   <CopyIcon size={12} />
                   Copy SQL to clipboard
-                </button>
+                </MenuItem>
                 {activeTab.savedQueryId && (
                   <>
-                    <div className="my-1 border-t" />
+                    <MenuDivider />
                     <div
                       className="relative"
                       onMouseEnter={() => setMoveMenuOpen(true)}
                       onMouseLeave={() => setMoveMenuOpen(false)}
                     >
-                      <button className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-popover-foreground hover:bg-accent">
+                      <MenuItem rightSlot="›">
                         <FolderInput size={12} />
                         Move to folder
-                        <span className="ml-auto text-muted-foreground">›</span>
-                      </button>
+                      </MenuItem>
                       {moveMenuOpen && (
-                        <div className="absolute left-full top-0 z-50 ml-0.5 w-44 rounded-md border bg-popover py-1 shadow-md">
-                          <button
+                        <MenuContent className="absolute left-full top-0 z-50 ml-0.5 w-44">
+                          <MenuItem
                             onClick={() => handleMove(null)}
-                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-accent ${
+                            className={
                               !activeTab.folderName
                                 ? "text-muted-foreground"
                                 : "text-popover-foreground"
-                            }`}
+                            }
                           >
                             No folder (root)
-                          </button>
+                          </MenuItem>
                           {folders.map((f) => (
-                            <button
+                            <MenuItem
                               key={f.id}
                               onClick={() => handleMove(f.id)}
-                              className={`flex w-full items-center gap-2 truncate px-3 py-1.5 text-xs hover:bg-accent ${
+                              className={`truncate ${
                                 activeTab.folderName === f.name
                                   ? "text-muted-foreground"
                                   : "text-popover-foreground"
                               }`}
                             >
                               {f.name}
-                            </button>
+                            </MenuItem>
                           ))}
                           {folders.length === 0 && (
                             <span className="block px-3 py-1.5 text-xs text-muted-foreground">
                               No folders yet
                             </span>
                           )}
-                        </div>
+                        </MenuContent>
                       )}
                     </div>
                   </>
                 )}
                 {renderMoreMenuItems?.(() => setMenuOpen(false))}
-              </div>
+              </MenuContent>
             )}
           </div>
         </div>

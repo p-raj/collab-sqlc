@@ -9,6 +9,11 @@
   :root {
     --background: 0 0% 100%;
     --foreground: 0 0% 6%;
+    --surface: 0 0% 100%;
+    --surface-raised: 0 0% 100%;
+    --surface-subtle: 0 0% 98%;
+    --text-muted: 0 0% 45%;
+    --text-subtle: 0 0% 64%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 6%;
     --popover: 0 0% 100%;
@@ -24,14 +29,25 @@
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 90%;
+    --border-subtle: 0 0% 90%;
+    --border-strong: 0 0% 72%;
     --input: 0 0% 90%;
     --ring: 0 0% 9%;
+    --focus-ring: 212 100% 48%;
+    --success: 142 72% 29%;
+    --warning: 38 92% 42%;
+    --info: 212 100% 48%;
     --radius: 0.375rem;
   }
 
   .dark {
     --background: 0 0% 4%;
     --foreground: 0 0% 98%;
+    --surface: 0 0% 4%;
+    --surface-raised: 0 0% 7%;
+    --surface-subtle: 0 0% 10%;
+    --text-muted: 0 0% 64%;
+    --text-subtle: 0 0% 45%;
     --card: 0 0% 4%;
     --card-foreground: 0 0% 98%;
     --popover: 0 0% 4%;
@@ -47,8 +63,14 @@
     --destructive: 0 62% 30%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 15%;
+    --border-subtle: 0 0% 15%;
+    --border-strong: 0 0% 28%;
     --input: 0 0% 15%;
     --ring: 0 0% 84%;
+    --focus-ring: 212 100% 58%;
+    --success: 142 70% 45%;
+    --warning: 38 92% 56%;
+    --info: 212 100% 58%;
   }
 }
 

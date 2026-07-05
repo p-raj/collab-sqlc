@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronRight, FileText, FolderOpen, Globe, Loader2 } from "lucide-react";
+import { ChevronRight, FileText, FolderOpen, Globe } from "lucide-react";
 import { useSavedQueriesStore } from "@/domains/queries/hooks/use-saved-queries-store";
+import { EmptyState, LoadingState } from "@/shared/components/ui/DataState";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
 import type { QueryFolder, SavedQuery } from "@/domains/queries/types";
 
 interface Props {
@@ -57,10 +59,11 @@ export function APIQueriesPanel({ onOpenQuery }: Props) {
       </div>
 
       {isLoading && folders.length === 0 && queries.length === 0 && (
-        <div className="flex items-center gap-1.5 px-2 py-3">
-          <Loader2 size={12} className="animate-spin text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Loading...</span>
-        </div>
+        <LoadingState
+          label="Loading hosted queries"
+          showLabel
+          className="justify-start px-2 py-3"
+        />
       )}
 
       {visibleFolders.map((folder) => (
@@ -79,7 +82,7 @@ export function APIQueriesPanel({ onOpenQuery }: Props) {
       ))}
 
       {hostedQueries.length === 0 && !isLoading && (
-        <div className="px-2 py-2 text-xs text-muted-foreground/60">No hosted queries yet</div>
+        <EmptyState title="No hosted queries yet" className="items-start px-2 py-2 text-left" />
       )}
     </div>
   );
@@ -100,22 +103,26 @@ function HostedFolderRow({
 }) {
   return (
     <div>
-      <button
-        type="button"
+      <ObjectListItem
         onClick={onToggle}
-        className="group flex w-full items-center gap-1.5 px-2 py-1 text-xs hover:bg-accent/50"
+        indicator={
+          <>
+            <ChevronRight
+              size={10}
+              className={`shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+            />
+            <FolderOpen size={11} className="shrink-0 text-muted-foreground/70" />
+          </>
+        }
+        meta={
+          <span className="ml-auto shrink-0 text-[0.75rem] text-muted-foreground/50">
+            {queries.length}
+          </span>
+        }
       >
-        <ChevronRight
-          size={10}
-          className={`shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-        />
-        <FolderOpen size={11} className="shrink-0 text-muted-foreground/70" />
         <span className="truncate">{folder.name}</span>
         {folder.is_shared && <Globe size={9} className="shrink-0 text-muted-foreground/50" />}
-        <span className="ml-auto shrink-0 text-[0.75rem] text-muted-foreground/50">
-          {queries.length}
-        </span>
-      </button>
+      </ObjectListItem>
 
       {isExpanded &&
         queries.map((query) => (
@@ -139,21 +146,18 @@ function HostedQueryRow({
   onOpen: () => void;
 }) {
   return (
-    <button
-      type="button"
+    <ObjectListItem
       onClick={onOpen}
-      className={`group flex w-full items-center gap-1.5 py-1 pr-2 text-left text-xs hover:bg-accent/50 ${
-        indent ? "pl-6" : "pl-2"
-      }`}
+      indicator={<FileText size={11} className="shrink-0 text-muted-foreground/50" />}
+      className={`py-1 pr-2 ${indent ? "pl-6" : "pl-2"}`}
       title={query.description ?? query.title}
     >
-      <FileText size={11} className="shrink-0 text-muted-foreground/50" />
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-1">
           <span className="truncate">{query.title}</span>
           {query.is_shared && (
             <span title="Shared">
-              <Globe size={9} className="shrink-0 text-blue-500" />
+              <Globe size={9} className="shrink-0 text-info" />
             </span>
           )}
         </div>
@@ -163,6 +167,6 @@ function HostedQueryRow({
           </span>
         )}
       </div>
-    </button>
+    </ObjectListItem>
   );
 }

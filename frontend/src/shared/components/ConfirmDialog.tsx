@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
+import { Button } from "./ui/Button";
 
 interface ConfirmDialogProps {
   title: string;
@@ -45,22 +46,18 @@ export function ConfirmDialog({
         </div>
         <div className="px-4 py-3 text-sm text-muted-foreground">{message}</div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
-          <button
+          <Button
             onClick={onCancel}
-            className="rounded px-3 py-1.5 text-xs font-medium hover:bg-accent"
+            variant="ghost"
           >
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={onConfirm}
-            className={`rounded px-3 py-1.5 text-xs font-medium text-white ${
-              isDanger
-                ? "bg-destructive hover:bg-destructive/90"
-                : "bg-primary hover:bg-primary/90"
-            }`}
+            variant={isDanger ? "danger" : "primary"}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>,

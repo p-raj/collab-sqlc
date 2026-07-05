@@ -12,8 +12,8 @@ interface EditorSidePanelProps {
     onApplySql: (sql: string) => void;
     onOpenQuery: (query: SavedQuery) => void;
     onReplayQuery: (sql: string) => void;
-    onOpenSchemaTab: (schemaName: string, tableName: string) => void;
-    onGenerateSelect: (schemaName: string, tableName: string) => void;
+    onOpenSchemaTab: (schemaName: string, tableName: string, objectId?: string) => void;
+    onGenerateSelect: (schemaName: string, tableName: string, objectId?: string) => void;
 }
 
 export function EditorSidePanel({

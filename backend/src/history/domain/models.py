@@ -20,6 +20,8 @@ class RunHistoryModel(Base):
     sql: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     source: Mapped[str] = mapped_column(String(20), default="editor", nullable=False, index=True)
+    operation_language: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    result_shape: Mapped[str] = mapped_column(String(50), default="tabular", nullable=False)
     params: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     write_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     user_role: Mapped[str] = mapped_column(String(20), default="viewer", nullable=False)
@@ -55,4 +57,8 @@ class RunResultModel(Base):
     rows: Mapped[list[list[Any]]] = mapped_column(JSONB, nullable=False)
     row_count: Mapped[int] = mapped_column(Integer, nullable=False)
     truncated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    result_shape: Mapped[str] = mapped_column(String(50), default="tabular", nullable=False)
+    data: Mapped[dict[str, Any] | list[Any] | str | int | float | bool | None] = mapped_column(
+        JSONB, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

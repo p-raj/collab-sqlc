@@ -10,6 +10,8 @@ import { useAuthStore } from "@/domains/auth/hooks/use-auth-store";
 import { extractActiveSql } from "@/domains/editor/utils/active-sql";
 import { useKeyboardShortcuts } from "@/shared/hooks/use-keyboard-shortcuts";
 import { getShortcutSpec } from "@/shared/keyboard-shortcuts";
+import { Button } from "@/shared/components/ui/Button";
+import { Select } from "@/shared/components/ui/Select";
 import { useEditorContext } from "../hooks/editor-context";
 import { useEditorSavedQueryActions } from "../hooks/editor-saved-query-context";
 import { EditorSchemaTabView } from "./EditorSchemaTabView";
@@ -142,6 +144,7 @@ export default function EditorPage() {
         connectionId={activeTab.connectionId}
         schemaName={activeTab.schemaView.schemaName}
         tableName={activeTab.schemaView.tableName}
+        objectId={activeTab.schemaView.objectId}
         connectionName={selectedConnection?.name ?? activeTab.connectionId}
         activeSection={activeTab.schemaView.activeSection}
         onChangeSection={(section) =>
@@ -165,11 +168,12 @@ export default function EditorPage() {
               }`}
             />
           )}
-          <select
+          <Select
             value={selectedConnectionId ?? ""}
             onChange={handleConnectionChange}
             disabled={connectionsLoading}
-            className="h-6 appearance-none rounded border border-input bg-transparent pl-5 pr-6 text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            size="xs"
+            className="appearance-none pl-5 pr-6 text-muted-foreground"
           >
             <option value="" disabled>
               {connectionsLoading ? "Loading..." : "Select connection..."}
@@ -179,17 +183,20 @@ export default function EditorPage() {
                 {c.name} ({c.database})
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {canToggleWriteMode && activeTab && (
-          <button
+          <Button
+            type="button"
             onClick={() => dispatch({ type: "TOGGLE_WRITE_MODE", tabId: activeTab.id })}
-            className={`inline-flex h-6 items-center gap-1 rounded border px-2 text-xs transition-colors ${
+            variant="secondary"
+            size="xs"
+            className={
               activeTab.writeMode
-                ? "border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                : "border-input text-muted-foreground hover:bg-accent"
-            }`}
+                ? "border-warning/50 bg-warning/10 text-warning hover:bg-warning/10"
+                : ""
+            }
             title={
               activeTab.writeMode
                 ? "Write mode ON — click to switch to read-only"
@@ -198,7 +205,7 @@ export default function EditorPage() {
           >
             {activeTab.writeMode ? <LockOpen size={12} /> : <Lock size={12} />}
             {activeTab.writeMode ? "Write" : "Read-only"}
-          </button>
+          </Button>
         )}
 
         {queryApiCapability.hostedEndpointChip}
@@ -208,7 +215,6 @@ export default function EditorPage() {
       <QueryHeader
         isExecuting={activeTabIsExecuting}
         hasSelection={hasSelection}
-        backendPid={activeTab?.backendPid ?? null}
         showSavePopover={showSavePopover}
         onShowSavePopover={setShowSavePopover}
         onRun={handleRunClick}

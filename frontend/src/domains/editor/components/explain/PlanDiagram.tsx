@@ -1,9 +1,24 @@
 import { useMemo, useState, useCallback } from "react";
 import { ChevronRight, ChevronDown, Clock, ArrowUp, ArrowDown } from "lucide-react";
+import { InlineCode } from "@/shared/components/ui/CodeBlock";
 import type { Plan, PlanNode } from "../../explain/types";
-import { percentToColor, durationSeverity, estimateSeverity, rowsRemovedSeverity, severityClasses } from "../../explain/color";
-import { formatDuration, formatRows, formatCost, formatPercent, getNodeName, getNodeRelation } from "../../explain/format";
-import { type Metric, ALL_METRICS, computeBar, metricAvailable } from "../../explain/metrics";
+import {
+  percentToColor,
+  durationSeverity,
+  estimateSeverity,
+  rowsRemovedSeverity,
+  severityClasses,
+} from "../../explain/color";
+import {
+  formatDuration,
+  formatRows,
+  formatCost,
+  formatPercent,
+  getNodeName,
+  getNodeRelation,
+} from "../../explain/format";
+import { type Metric, computeBar } from "../../explain/metrics";
+import { MetricSelector } from "./MetricSelector";
 
 export function PlanDiagram({ plan }: { plan: Plan }) {
   const [metric, setMetric] = useState<Metric>("time");
@@ -22,19 +37,7 @@ export function PlanDiagram({ plan }: { plan: Plan }) {
     <div className="flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
       <div className="flex flex-shrink-0 items-center gap-1.5 border-b px-3 py-1.5">
-        <span className="text-[11px] text-muted-foreground">Color by</span>
-        {ALL_METRICS.filter((m) => metricAvailable(plan, m)).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMetric(m)}
-            className={`rounded px-2 py-0.5 text-[11px] capitalize transition-colors ${metric === m
-                ? "bg-foreground text-background font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-accent"
-              }`}
-          >
-            {m}
-          </button>
-        ))}
+        <MetricSelector plan={plan} value={metric} onChange={setMetric} />
         <div className="ml-auto flex items-center gap-4 text-[11px] text-muted-foreground">
           {plan.isAnalyze && (
             <>
@@ -224,7 +227,10 @@ function NodeDetail({ node, plan }: { node: PlanNode; plan: Plan }) {
   return (
     <div
       className="grid gap-x-8 gap-y-2 text-[11px]"
-      style={{ paddingLeft: node.depth * 20 + 32, gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
+      style={{
+        paddingLeft: node.depth * 20 + 32,
+        gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+      }}
     >
       {/* Timing */}
       {plan.isAnalyze && (
@@ -249,9 +255,9 @@ function NodeDetail({ node, plan }: { node: PlanNode; plan: Plan }) {
             value={
               <span className="inline-flex items-center gap-0.5">
                 {node.estimateDirection === "under" ? (
-                  <ArrowUp size={9} className="text-orange-500" />
+                  <ArrowUp size={9} className="text-warning" />
                 ) : (
-                  <ArrowDown size={9} className="text-blue-500" />
+                  <ArrowDown size={9} className="text-info" />
                 )}
                 {node.estimateFactor.toFixed(1)}×{" "}
                 {node.estimateDirection === "under" ? "under" : "over"}
@@ -278,16 +284,28 @@ function NodeDetail({ node, plan }: { node: PlanNode; plan: Plan }) {
       {hasBuffers && (
         <DetailSection title="Buffers">
           {((node["Shared Hit Blocks"] as number) ?? 0) > 0 && (
-            <DetailRow label="Shared hit" value={((node["Shared Hit Blocks"] as number) ?? 0).toLocaleString()} />
+            <DetailRow
+              label="Shared hit"
+              value={((node["Shared Hit Blocks"] as number) ?? 0).toLocaleString()}
+            />
           )}
           {((node["Shared Read Blocks"] as number) ?? 0) > 0 && (
-            <DetailRow label="Shared read" value={((node["Shared Read Blocks"] as number) ?? 0).toLocaleString()} />
+            <DetailRow
+              label="Shared read"
+              value={((node["Shared Read Blocks"] as number) ?? 0).toLocaleString()}
+            />
           )}
           {((node["Shared Dirtied Blocks"] as number) ?? 0) > 0 && (
-            <DetailRow label="Shared dirtied" value={((node["Shared Dirtied Blocks"] as number) ?? 0).toLocaleString()} />
+            <DetailRow
+              label="Shared dirtied"
+              value={((node["Shared Dirtied Blocks"] as number) ?? 0).toLocaleString()}
+            />
           )}
           {((node["Shared Written Blocks"] as number) ?? 0) > 0 && (
-            <DetailRow label="Shared written" value={((node["Shared Written Blocks"] as number) ?? 0).toLocaleString()} />
+            <DetailRow
+              label="Shared written"
+              value={((node["Shared Written Blocks"] as number) ?? 0).toLocaleString()}
+            />
           )}
         </DetailSection>
       )}
@@ -295,17 +313,21 @@ function NodeDetail({ node, plan }: { node: PlanNode; plan: Plan }) {
       {/* Info */}
       {(node["Index Name"] || node["Hash Cond"] || node["Sort Key"] || node["Group Key"]) && (
         <DetailSection title="Info">
-          {node["Index Name"] && (
-            <DetailRow label="Index" value={node["Index Name"] as string} />
-          )}
+          {node["Index Name"] && <DetailRow label="Index" value={node["Index Name"] as string} />}
           {node["Hash Cond"] && (
-            <DetailRow label="Hash cond" value={<code className="text-[0.75rem]">{node["Hash Cond"] as string}</code>} />
+            <DetailRow
+              label="Hash cond"
+              value={<InlineCode>{node["Hash Cond"] as string}</InlineCode>}
+            />
           )}
           {node["Sort Key"] && (
             <DetailRow label="Sort key" value={(node["Sort Key"] as string[]).join(", ")} />
           )}
           {node["Sort Method"] && (
-            <DetailRow label="Sort method" value={`${node["Sort Method"]} (${node["Sort Space Used"]}kB ${node["Sort Space Type"]})`} />
+            <DetailRow
+              label="Sort method"
+              value={`${node["Sort Method"]} (${node["Sort Space Used"]}kB ${node["Sort Space Type"]})`}
+            />
           )}
           {node["Group Key"] && (
             <DetailRow label="Group key" value={(node["Group Key"] as string[]).join(", ")} />

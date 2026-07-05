@@ -4,9 +4,7 @@ services:
   backend:
     environment:
       - APP_DEBUG=true
-      - AUTH_SECRET_KEY=dev-secret-not-for-production
-      - ENCRYPTION_KEY=dev-encryption-key-not-for-production
-      - APP_CORS_ORIGINS=["http://localhost:${FRONTEND_DEV_PORT:-5173}","http://localhost:${FRONTEND_PORT:-3000}"]
+      - APP_CORS_ORIGINS=["http://localhost:${FRONTEND_DEV_PORT:-5173}"]
     volumes:
       - ../backend/src:/app/src
     command: ["uv", "run", "uvicorn", "src.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "${BACKEND_PORT:-8000}", "--reload"]
@@ -14,8 +12,6 @@ services:
   worker:
     environment:
       - APP_DEBUG=true
-      - AUTH_SECRET_KEY=dev-secret-not-for-production
-      - ENCRYPTION_KEY=dev-encryption-key-not-for-production
     volumes:
       - ../backend/src:/app/src
 

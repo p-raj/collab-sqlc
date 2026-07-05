@@ -17,11 +17,13 @@ import { CH_DATATYPES } from "./ch/datatypes";
 import { getKeywordsForContext as chKeywords } from "./ch/keywords";
 
 export interface DialectProfile {
-    readonly id: DatabaseType;
+    readonly id: SqlDatabaseType;
     readonly functions: CatalogFunction[];
     readonly datatypes: readonly string[];
     readonly getKeywords: (context: string | null) => string[];
 }
+
+type SqlDatabaseType = Extract<DatabaseType, "postgresql" | "clickhouse">;
 
 const PG_DIALECT: DialectProfile = {
     id: "postgresql",
@@ -37,11 +39,14 @@ const CH_DIALECT: DialectProfile = {
     getKeywords: chKeywords,
 };
 
-const DIALECTS: Record<DatabaseType, DialectProfile> = {
+const DIALECTS: Record<SqlDatabaseType, DialectProfile> = {
     postgresql: PG_DIALECT,
     clickhouse: CH_DIALECT,
 };
 
 export function getDialect(dbType: DatabaseType | null | undefined): DialectProfile {
-    return DIALECTS[dbType ?? "postgresql"] ?? PG_DIALECT;
+    if (dbType === "clickhouse") {
+        return DIALECTS.clickhouse;
+    }
+    return PG_DIALECT;
 }

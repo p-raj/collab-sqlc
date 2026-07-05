@@ -1,5 +1,8 @@
 """Connection service — manages database connections with encryption and safety."""
 
+import json
+from typing import Any
+
 from cryptography.fernet import InvalidToken
 
 from src.admin.service.audit_service import AuditService
@@ -42,6 +45,8 @@ class ConnectionService:
             database=request.database,
             username=request.username,
             password_encrypted=self._encryption.encrypt(request.password),
+            config=request.config,
+            credentials_encrypted=_encrypt_credentials(self._encryption, request.credentials),
             ssl_enabled=request.ssl_enabled,
             ssl_ca=request.ssl_ca,
             ssl_cert=request.ssl_cert,
@@ -119,6 +124,10 @@ class ConnectionService:
             conn.username = update.username
         if update.password is not None:
             conn.password_encrypted = self._encryption.encrypt(update.password)
+        if "config" in update.model_fields_set:
+            conn.config = update.config
+        if "credentials" in update.model_fields_set:
+            conn.credentials_encrypted = _encrypt_credentials(self._encryption, update.credentials)
         if update.ssl_enabled is not None:
             conn.ssl_enabled = update.ssl_enabled
         if "ssl_ca" in update.model_fields_set:
@@ -213,11 +222,17 @@ class ConnectionService:
             port=port,
             database=conn.database,
             username=conn.username,
-            password=self._encryption.decrypt(conn.password_encrypted),
+            password=_decrypt_required_secret(
+                self._encryption,
+                conn.password_encrypted,
+                "Stored connection password is invalid. Check ENCRYPTION_KEY or re-save the connection.",
+            ),
             ssl_enabled=conn.ssl_enabled,
             ssl_ca=conn.ssl_ca,
             ssl_cert=conn.ssl_cert,
             ssl_key=_decrypt_ssl_private_key(self._encryption, conn.ssl_key),
+            config=conn.config,
+            credentials=_decrypt_credentials(self._encryption, conn.credentials_encrypted),
         )
 
     async def test_connection(
@@ -228,6 +243,8 @@ class ConnectionService:
         database: str,
         username: str,
         password: str,
+        config: dict[str, Any] | None = None,
+        credentials: dict[str, Any] | None = None,
         ssl_enabled: bool = False,
         ssl_ca: str | None = None,
         ssl_cert: str | None = None,
@@ -244,6 +261,8 @@ class ConnectionService:
             ssl_ca=ssl_ca,
             ssl_cert=ssl_cert,
             ssl_key=ssl_key,
+            config=config,
+            credentials=credentials,
         )
         try:
             success = await driver.test_connection(config)
@@ -275,6 +294,39 @@ def _decrypt_ssl_private_key(
         return encryption.decrypt(private_key)
     except InvalidToken as exc:
         raise ValueError("Stored SSL private key is invalid") from exc
+
+
+def _decrypt_required_secret(
+    encryption: CredentialEncryption,
+    value: str,
+    message: str,
+) -> str:
+    try:
+        return encryption.decrypt(value)
+    except InvalidToken as exc:
+        raise ValueError(message) from exc
+
+
+def _encrypt_credentials(
+    encryption: CredentialEncryption,
+    credentials: dict[str, Any] | None,
+) -> str | None:
+    if credentials is None:
+        return None
+    return encryption.encrypt(json.dumps(credentials))
+
+
+def _decrypt_credentials(
+    encryption: CredentialEncryption,
+    credentials_encrypted: str | None,
+) -> dict[str, Any] | None:
+    if credentials_encrypted is None:
+        return None
+    try:
+        decoded = json.loads(encryption.decrypt(credentials_encrypted))
+    except (InvalidToken, json.JSONDecodeError) as exc:
+        raise ValueError("Stored connection credentials are invalid") from exc
+    return decoded if isinstance(decoded, dict) else None
 
 
 def _validate_ssl_configuration(

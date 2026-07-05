@@ -10,12 +10,13 @@ import (
 
 // Project directories resolved at load time.
 var (
-	RootDir     string
-	BackendDir  string
-	FrontendDir string
-	DockerDir   string
-	ComposeFile string
-	EnvFile     string
+	RootDir        string
+	BackendDir     string
+	FrontendDir    string
+	DockerDir      string
+	ComposeFile    string
+	DevComposeFile string
+	EnvFile        string
 )
 
 // env holds key-value pairs loaded from .env.
@@ -34,6 +35,7 @@ func Load() error {
 	FrontendDir = filepath.Join(root, "frontend")
 	DockerDir = filepath.Join(root, "docker")
 	ComposeFile = filepath.Join(DockerDir, "docker-compose.yml")
+	DevComposeFile = filepath.Join(DockerDir, "docker-compose.dev.yml")
 	EnvFile = filepath.Join(root, ".env")
 
 	loadEnvFile(EnvFile)

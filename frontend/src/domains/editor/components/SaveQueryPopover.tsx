@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2 } from "lucide-react";
+import { Button } from "@/shared/components/ui/Button";
+import { Checkbox } from "@/shared/components/ui/Checkbox";
+import { Field, FieldError } from "@/shared/components/ui/Field";
+import { Input } from "@/shared/components/ui/Input";
+import { Select } from "@/shared/components/ui/Select";
 import type { EditorSavedQueryFolder } from "../hooks/editor-saved-query-context";
 
 const schema = z.object({
@@ -76,69 +80,60 @@ export function SaveQueryPopover({ folders, onClose, onSaved, defaultTitle }: Sa
     }
   };
 
-  const inputClasses =
-    "h-7 w-full rounded border border-input bg-transparent px-2 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring";
-
   return (
     <div
       ref={popoverRef}
       className="absolute left-0 top-full z-50 mt-1 w-64 rounded border border-input bg-card p-3 shadow-lg"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-2">
-        <div>
-          <input
+        <Field>
+          <Input
             {...register("title")}
             placeholder="Query title *"
-            className={inputClasses}
+            size="sm"
             autoFocus
           />
-          {errors.title && (
-            <p className="mt-0.5 text-[0.75rem] text-red-500">{errors.title.message}</p>
-          )}
-        </div>
+          <FieldError>{errors.title?.message}</FieldError>
+        </Field>
 
-        <input
+        <Input
           {...register("description")}
           placeholder="Description (optional)"
-          className={inputClasses}
+          size="sm"
         />
 
-        <select {...register("folder_id")} className={`${inputClasses} appearance-none`}>
+        <Select {...register("folder_id")} size="sm" className="appearance-none">
           <option value="">No folder</option>
           {folders.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
             </option>
           ))}
-        </select>
+        </Select>
 
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            {...register("is_shared")}
-            className="h-3.5 w-3.5 rounded border-input"
-          />
+          <Checkbox {...register("is_shared")} />
           Share with team
         </label>
 
-        {saveError && <p className="text-[0.75rem] text-red-500">{saveError}</p>}
+        <FieldError>{saveError}</FieldError>
 
         <div className="flex justify-end gap-1.5">
-          <button
+          <Button
             type="button"
             onClick={onClose}
-            className="rounded border border-input px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent"
+            size="xs"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
-            disabled={isSaving}
-            className="inline-flex items-center gap-1 rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            loading={isSaving}
+            variant="primary"
+            size="xs"
           >
-            {isSaving && <Loader2 size={10} className="animate-spin" />}
             Save
-          </button>
+          </Button>
         </div>
       </form>
     </div>

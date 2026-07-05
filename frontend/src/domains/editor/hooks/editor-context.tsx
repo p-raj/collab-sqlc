@@ -36,6 +36,7 @@ import {
 import { useConnectionsStore } from "@/domains/connections/hooks/use-connections-store";
 import { HTTPError } from "ky";
 import { extractSmartVariables, substituteSmartVariables } from "../utils/smart-variables";
+import { fetchObjectDetail } from "@/domains/schema/services/schema-api";
 export { extractSmartVariables } from "../utils/smart-variables";
 
 interface EditorContextValue {
@@ -55,13 +56,15 @@ interface EditorContextValue {
   handleOpenSchemaTab: (
     schemaName: string,
     tableName: string,
+    objectId?: string,
     connectionIdOverride?: string | null,
   ) => void;
   handleGenerateSelect: (
     schemaName: string,
     tableName: string,
+    objectId?: string,
     connectionIdOverride?: string | null,
-  ) => void;
+  ) => Promise<void>;
   handleFormatSql: () => Promise<void>;
 }
 
@@ -71,6 +74,28 @@ const RUN_POLL_INTERVAL_MS = 750;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function quoteRedisArgument(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function fallbackPreviewText(
+  dbType: string | null,
+  schemaName: string,
+  tableName: string,
+): string {
+  if (dbType === "dynamodb") {
+    return `SELECT * FROM ${quoteIdentifier(tableName)} LIMIT 100;`;
+  }
+  if (dbType === "redis") {
+    return `TYPE ${quoteRedisArgument(tableName)}`;
+  }
+  return `SELECT * FROM ${schemaName}.${tableName} LIMIT 100;`;
 }
 
 function getCloseTabMessage(tab: Tab): string | null {
@@ -340,7 +365,12 @@ export function EditorProvider({
   );
 
   const handleOpenSchemaTab = useCallback(
-    (schemaName: string, tableName: string, connectionIdOverride?: string | null) => {
+    (
+      schemaName: string,
+      tableName: string,
+      objectId?: string,
+      connectionIdOverride?: string | null,
+    ) => {
       const connectionId = resolveConnectionOverride(connectionIdOverride, activeConnectionId);
       if (!connectionId) return;
       // Reuse existing schema tab for the same table
@@ -351,19 +381,38 @@ export function EditorProvider({
           t.connectionId === connectionId,
       );
       if (existing) {
+        if (objectId) {
+          dispatch({ type: "SET_SCHEMA_OBJECT_ID", tabId: existing.id, objectId });
+        }
         dispatch({ type: "SET_ACTIVE_TAB", tabId: existing.id });
         return;
       }
-      const tab = createSchemaTab(schemaName, tableName, connectionId);
+      const tab = createSchemaTab(schemaName, tableName, connectionId, objectId);
       dispatch({ type: "ADD_TAB", tab });
     },
     [activeConnectionId, state.tabs],
   );
 
   const handleGenerateSelect = useCallback(
-    (schemaName: string, tableName: string, connectionIdOverride?: string | null) => {
+    async (
+      schemaName: string,
+      tableName: string,
+      objectId?: string,
+      connectionIdOverride?: string | null,
+    ) => {
       const connectionId = resolveConnectionOverride(connectionIdOverride, activeConnectionId);
-      const sql = `SELECT * FROM ${schemaName}.${tableName} LIMIT 100;`;
+      const dbType =
+        connections.find((connection) => connection.id === connectionId)?.db_type ?? null;
+      let sql = fallbackPreviewText(dbType, schemaName, tableName);
+      if (connectionId && objectId) {
+        try {
+          const detail = await fetchObjectDetail(connectionId, objectId);
+          sql = detail.preview_operation.text;
+        } catch {
+          toast.error("Failed to build preview query");
+          return;
+        }
+      }
       // If the active tab is empty, insert into it; otherwise open a new tab
       if (activeTab && !activeTab.sql.trim() && !activeTab.schemaView) {
         if (connectionId && activeTab.connectionId !== connectionId) {
@@ -377,7 +426,7 @@ export function EditorProvider({
         dispatch({ type: "RENAME_TAB", tabId: tab.id, title: tableName });
       }
     },
-    [activeConnectionId, activeTab, dispatch],
+    [activeConnectionId, activeTab, connections, dispatch],
   );
 
   const handleFormatSql = useCallback(async () => {
@@ -443,7 +492,7 @@ function useFallbackContext(): EditorContextValue {
       handleExportCsv: noop,
       handleReplayQuery: noop,
       handleOpenSchemaTab: noop,
-      handleGenerateSelect: noop,
+      handleGenerateSelect: noopAsync,
       handleFormatSql: noopAsync,
     }),
     [],

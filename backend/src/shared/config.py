@@ -21,6 +21,7 @@ class DatabaseSettings(BaseSettings):
 class RedisSettings(BaseSettings):
     url: str = "redis://localhost:6379/0"
     schema_cache_ttl: int = 300
+    dynamodb_schema_cache_ttl: int = 86400
 
     model_config = {"env_prefix": "REDIS_"}
 

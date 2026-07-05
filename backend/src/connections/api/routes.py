@@ -103,6 +103,8 @@ async def test_connection(
         database=body.database,
         username=body.username,
         password=body.password,
+        config=body.config,
+        credentials=body.credentials,
         ssl_enabled=body.ssl_enabled,
         ssl_ca=body.ssl_ca,
         ssl_cert=body.ssl_cert,

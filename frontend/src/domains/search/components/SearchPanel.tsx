@@ -2,6 +2,9 @@ import { useState, useMemo } from "react";
 import { FileText, Table2 } from "lucide-react";
 import { useSavedQueriesStore } from "@/domains/queries/hooks/use-saved-queries-store";
 import { useSchemaStore } from "@/domains/schema/hooks/use-schema-store";
+import { EmptyState } from "@/shared/components/ui/DataState";
+import { Input } from "@/shared/components/ui/Input";
+import { ObjectListItem } from "@/shared/components/ui/ObjectListItem";
 import type { SavedQuery } from "@/domains/queries/types";
 import type { TableInfo } from "@/domains/schema/types";
 
@@ -48,12 +51,11 @@ export function SearchPanel({ connectionId, onOpenQuery, onSelectTable }: Search
 
   return (
     <div className="flex flex-col gap-2 p-2">
-      <input
+      <Input
         type="text"
         placeholder="Search queries & schema..."
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
-        className="h-7 w-full rounded border border-input bg-transparent px-2 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
       />
 
       {!hasFilter && (
@@ -62,7 +64,7 @@ export function SearchPanel({ connectionId, onOpenQuery, onSelectTable }: Search
         </p>
       )}
 
-      {noResults && <p className="text-xs text-muted-foreground/60">No results</p>}
+      {noResults && <EmptyState title="No results" className="items-start p-0 text-left" />}
 
       {matchedQueries.length > 0 && (
         <div className="flex flex-col gap-0.5">
@@ -70,19 +72,19 @@ export function SearchPanel({ connectionId, onOpenQuery, onSelectTable }: Search
             Queries
           </span>
           {matchedQueries.map((q) => (
-            <button
+            <ObjectListItem
               key={q.id}
               onClick={() => onOpenQuery(q)}
-              className="flex items-start gap-1.5 rounded px-1.5 py-1 text-left hover:bg-accent"
+              indicator={<FileText size={12} className="mt-0.5 shrink-0 text-muted-foreground" />}
+              className="items-start px-1.5"
             >
-              <FileText size={12} className="mt-0.5 shrink-0 text-muted-foreground" />
               <div className="min-w-0">
                 <div className="truncate text-xs font-medium">{q.title}</div>
                 <div className="truncate text-[0.75rem] text-muted-foreground">
                   {truncateFirstLine(q.sql)}
                 </div>
               </div>
-            </button>
+            </ObjectListItem>
           ))}
         </div>
       )}
@@ -93,19 +95,21 @@ export function SearchPanel({ connectionId, onOpenQuery, onSelectTable }: Search
             Tables
           </span>
           {matchedTables.map((t) => (
-            <button
+            <ObjectListItem
               key={`${t.schema_name}.${t.table_name}`}
               onClick={() => onSelectTable(t.schema_name, t.table_name)}
-              className="flex items-center gap-1.5 rounded px-1.5 py-1 text-left hover:bg-accent"
+              indicator={<Table2 size={12} className="shrink-0 text-muted-foreground" />}
+              meta={
+                <span className="ml-auto shrink-0 text-[0.75rem] text-muted-foreground">
+                  {t.columns.length} cols
+                </span>
+              }
+              className="px-1.5"
             >
-              <Table2 size={12} className="shrink-0 text-muted-foreground" />
               <span className="truncate text-xs">
                 {t.schema_name}.{t.table_name}
               </span>
-              <span className="ml-auto shrink-0 text-[0.75rem] text-muted-foreground">
-                {t.columns.length} cols
-              </span>
-            </button>
+            </ObjectListItem>
           ))}
         </div>
       )}

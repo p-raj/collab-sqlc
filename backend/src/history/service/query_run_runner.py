@@ -123,4 +123,6 @@ class QueryRunRunner:
             row_count=result.row_count,
             execution_time_ms=result.execution_time_ms,
             truncated=truncated,
+            result_shape=result.result_shape,
+            data=result.data,
         )

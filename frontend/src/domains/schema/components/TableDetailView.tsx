@@ -6,6 +6,7 @@ interface TableDetailViewProps {
   schemaName: string;
   tableName: string;
   connectionId: string;
+  objectId?: string;
   onPreviewQuery: (sql: string) => void;
 }
 
@@ -13,6 +14,7 @@ export function TableDetailView({
   schemaName,
   tableName,
   connectionId,
+  objectId,
   onPreviewQuery,
 }: TableDetailViewProps) {
   const [activeSection, setActiveSection] = useState<TableExplorerTabId>("schema");
@@ -23,6 +25,7 @@ export function TableDetailView({
       connectionName={connectionId}
       schemaName={schemaName}
       tableName={tableName}
+      objectId={objectId}
       activeSection={activeSection}
       onChangeSection={setActiveSection}
       onPreviewQuery={onPreviewQuery}

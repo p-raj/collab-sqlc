@@ -1,3 +1,5 @@
+import { MenuDivider, MenuItem } from "@/shared/components/ui/Menu";
+
 interface HostedQueryMenuItemsProps {
   savedQueryId: string | null | undefined;
   isHosted: boolean;
@@ -16,14 +18,10 @@ export function HostedQuerySaveMenuItems({
 
   return (
     <>
-      <div className="my-1 border-t" />
-      <button
-        type="button"
-        onClick={onHostAsApi}
-        className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-popover-foreground hover:bg-accent"
-      >
+      <MenuDivider />
+      <MenuItem onClick={onHostAsApi}>
         Host as API
-      </button>
+      </MenuItem>
     </>
   );
 }
@@ -38,12 +36,8 @@ export function HostedQueryMoreMenuItems({
   }
 
   return (
-    <button
-      type="button"
-      onClick={onUnhostApi}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-accent"
-    >
+    <MenuItem onClick={onUnhostApi} className="text-destructive">
       Unhost API
-    </button>
+    </MenuItem>
   );
 }

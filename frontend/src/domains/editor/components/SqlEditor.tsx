@@ -4,9 +4,10 @@ import { useTheme } from "@/shared/contexts/theme-context";
 import { extractActiveSql } from "@/domains/editor/utils/active-sql";
 import { getShortcutSpec, toMonacoKeybinding } from "@/shared/keyboard-shortcuts";
 import MonacoEditor, { type OnMount } from "@monaco-editor/react";
-import type { editor, IDisposable } from "monaco-editor";
-import { createSqlCompletionProvider, createSqlSignatureHelpProvider } from "../sql-completion";
-import type { DatabaseType } from "../sql-completion/catalog/dialect";
+import type { editor } from "monaco-editor";
+import type { DatabaseType } from "@/domains/connections/engine-registry";
+import { getLanguagePack } from "../language-packs/registry";
+import type { RegisteredLanguagePackProviders } from "../language-packs/types";
 import { darkTheme, lightTheme } from "../monaco/themes";
 
 const RUN_QUERY_SHORTCUT = getShortcutSpec("run-query");
@@ -99,9 +100,9 @@ export function SqlEditor({
   const completionTablesRef = useRef(completionTables);
   const previousCompletionCountRef = useRef(completionTables.length);
   const dbTypeRef = useRef(dbType);
-  const completionRef = useRef<IDisposable | null>(null);
-  const signatureHelpRef = useRef<IDisposable | null>(null);
+  const languageProvidersRef = useRef<RegisteredLanguagePackProviders | null>(null);
   const { resolvedTheme } = useTheme();
+  const editorLanguage = getLanguagePack(dbType).monacoLanguage;
 
   // Keep refs in sync
   useEffect(() => {
@@ -203,23 +204,38 @@ export function SqlEditor({
         onSelectionChange?.(!!selection && !selection.isEmpty());
       });
 
-      // Register schema-aware completion
-      const getDbType = () => dbTypeRef.current ?? null;
-      completionRef.current = monaco.languages.registerCompletionItemProvider(
-        "sql",
-        createSqlCompletionProvider(() => completionTablesRef.current, getDbType),
-      );
-
-      // Register function signature help
-      signatureHelpRef.current = monaco.languages.registerSignatureHelpProvider(
-        "sql",
-        createSqlSignatureHelpProvider(() => completionTablesRef.current, getDbType),
-      );
-
       editorInstance.focus();
     },
     [resolvedTheme, onEditorReady, onSelectionChange],
   );
+
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
+    languageProvidersRef.current?.completion.dispose();
+    languageProvidersRef.current?.signatureHelp?.dispose();
+
+    const getDbType = () => dbTypeRef.current ?? null;
+    const languagePack = getLanguagePack(getDbType());
+    languagePack.setupMonaco?.(monaco);
+
+    const languageContext = {
+      getTables: () => completionTablesRef.current,
+      getDbType,
+    };
+    const completion = monaco.languages.registerCompletionItemProvider(
+      languagePack.monacoLanguage,
+      languagePack.createCompletionProvider(languageContext),
+    );
+    const signatureHelp = languagePack.createSignatureHelpProvider
+      ? monaco.languages.registerSignatureHelpProvider(
+          languagePack.monacoLanguage,
+          languagePack.createSignatureHelpProvider(languageContext),
+        )
+      : null;
+    languageProvidersRef.current = { completion, signatureHelp };
+  }, [dbType]);
 
   // Set/clear error markers based on errorPosition
   useEffect(() => {
@@ -251,14 +267,14 @@ export function SqlEditor({
   // Cleanup providers on unmount
   useEffect(() => {
     return () => {
-      completionRef.current?.dispose();
-      signatureHelpRef.current?.dispose();
+      languageProvidersRef.current?.completion.dispose();
+      languageProvidersRef.current?.signatureHelp?.dispose();
     };
   }, []);
 
   return (
     <MonacoEditor
-      language="sql"
+      language={editorLanguage}
       value={value}
       path={modelPath}
       onChange={(v) => onChange(v ?? "")}
